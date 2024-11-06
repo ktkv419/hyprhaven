@@ -1,0 +1,79 @@
+#!/bin/bash
+#  __  __     __  __     ______   ______     __  __     ______     __   __   ______     __   __
+# /\ \_\ \   /\ \_\ \   /\  == \ /\  == \   /\ \_\ \   /\  __ \   /\ \ / /  /\  ___\   /\ "-.\ \
+# \ \  __ \  \ \____ \  \ \  _-/ \ \  __<   \ \  __ \  \ \  __ \  \ \ \'/   \ \  __\   \ \ \-.  \
+#  \ \_\ \_\  \/\_____\  \ \_\    \ \_\ \_\  \ \_\ \_\  \ \_\ \_\  \ \__|    \ \_____\  \ \_\\"\_\
+#   \/_/\/_/   \/_____/   \/_/     \/_/ /_/   \/_/\/_/   \/_/\/_/   \/_/      \/_____/   \/_/ \/_/
+#
+# Requires jq and needs to be ran on start alongside of hyprpaper. Can be ran multiple times
+
+BASE_URL="https://wallhaven.cc/api/v1/search?"
+WALLPAPER_DIR="/tmp/"
+WALLPAPER_DEFAULT_DIR="${HOME}/.local/share/wallpapers/"
+
+# Setting up search query params
+# https://wallhaven.cc/help/api#search
+
+COLORS=("663399" "333399" "0066cc")
+
+COLOR=${COLORS[$RANDOM % ${#COLORS[@]}]}
+
+PAGE=$(((RANDOM % 5) + 1))
+
+INDEX=$((RANDOM % 20))
+
+CATEGORIES=010
+
+PURITY=100
+
+SORTING="views"
+
+MIN_RES="1920x1080"
+
+RATIOS="16x9,16x10,21x9"
+
+# export $(grep -v '^#' .env | xargs)
+
+kill_instance() {
+    SCRIPT_NAME=$(basename "$0")
+    CURRENT_PID=$$
+
+    if pgrep -f "$SCRIPT_NAME" >/dev/null; then
+        OLD_PIDS=$(pgrep -f "$SCRIPT_NAME")
+        for PID in $OLD_PIDS; do
+            if [ "$PID" != "$CURRENT_PID" ]; then
+                echo "Killing old instance with PID: $PID"
+                kill "$PID"
+            fi
+        done
+    fi
+}
+
+set_wallpaper() {
+    URL="https://wallhaven.cc/api/v1/search?categories=$CATEGORIES&purity=$PURITY&colors=$COLOR&sorting=$SORTING&atleast=$MIN_RES&ratios=$RATIOS&page=$PAGE"
+    IMAGE_URL=$(curl -s $URL | jq -r ".data.[$INDEX].path")
+
+    if [ "$IMAGE_URL" != "null" ] && [ -n "$IMAGE_URL" ]; then
+        IMAGE="${WALLPAPER_DIR}${IMAGE_URL##*/}"
+
+        RESPONSE_CODE=$(curl -s -o $IMAGE -w "%{http_code}" "$IMAGE_URL")
+
+        for wallpaper in $(hyprctl hyprpaper listloaded); do
+            hyprctl hyprpaper unload "$wallpaper"
+        done
+
+        for monitor in $(hyprctl monitors | grep "Monitor" | cut -d " " -f 2); do
+            hyprctl hyprpaper preload $IMAGE
+            hyprctl hyprpaper wallpaper "$monitor,$IMAGE"
+        done
+    else
+        echo "Couldn't access Wallhaven"
+    fi
+}
+
+# Loop to change wallpaper every 15 minutes (900 seconds)
+while true; do
+    kill_instance
+    set_wallpaper
+    sleep 900 # Sleep for 15 minutes
+done
