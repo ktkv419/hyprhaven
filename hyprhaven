@@ -11,6 +11,8 @@ BASE_URL="https://wallhaven.cc/api/v1/search?"
 WALLPAPER_DIR="/tmp/"
 WALLPAPER_DEFAULT_DIR="${HOME}/.local/share/wallpapers/"
 
+RELOAD_FILE="/tmp/.hyprhaven_reload"
+
 # Setting up search query params
 # https://wallhaven.cc/help/api#search
 
@@ -38,42 +40,56 @@ kill_instance() {
     SCRIPT_NAME=$(basename "$0")
     CURRENT_PID=$$
 
-    if pgrep -f "$SCRIPT_NAME" >/dev/null; then
+    if [ $(pgrep -f "$SCRIPT_NAME" | wc -l) -gt 2 ]; then
         OLD_PIDS=$(pgrep -f "$SCRIPT_NAME")
         for PID in $OLD_PIDS; do
             if [ "$PID" != "$CURRENT_PID" ]; then
                 echo "Killing old instance with PID: $PID"
+                touch $RELOAD_FILE
                 kill "$PID"
             fi
         done
+    else
+        rm $RELOAD_FILE
     fi
 }
 
 set_wallpaper() {
+    for WALLPAPER in $(hyprctl hyprpaper listloaded); do
+        hyprctl hyprpaper unload "$WALLPAPER"
+    done
+
+    for monitor in $(hyprctl monitors | grep "Monitor" | cut -d " " -f 2); do
+        hyprctl hyprpaper preload $IMAGE
+        hyprctl hyprpaper wallpaper "$monitor,$IMAGE"
+    done
+}
+
+fetch_wallpaper() {
     URL="https://wallhaven.cc/api/v1/search?categories=$CATEGORIES&purity=$PURITY&colors=$COLOR&sorting=$SORTING&atleast=$MIN_RES&ratios=$RATIOS&page=$PAGE"
     IMAGE_URL=$(curl -s $URL | jq -r ".data.[$INDEX].path")
-
     if [ "$IMAGE_URL" != "null" ] && [ -n "$IMAGE_URL" ]; then
         IMAGE="${WALLPAPER_DIR}${IMAGE_URL##*/}"
-
-        RESPONSE_CODE=$(curl -s -o $IMAGE -w "%{http_code}" "$IMAGE_URL")
-
-        for wallpaper in $(hyprctl hyprpaper listloaded); do
-            hyprctl hyprpaper unload "$wallpaper"
-        done
-
-        for monitor in $(hyprctl monitors | grep "Monitor" | cut -d " " -f 2); do
-            hyprctl hyprpaper preload $IMAGE
-            hyprctl hyprpaper wallpaper "$monitor,$IMAGE"
-        done
+        curl -s -o $IMAGE -w "%{http_code}" "$IMAGE_URL"
+        set_wallpaper
     else
         echo "Couldn't access Wallhaven"
     fi
 }
 
+set_default_wallpaper() {
+    IMAGE=$(find "$WALLPAPER_DEFAULT_DIR" -type f | shuf -n 1)
+    set_wallpaper
+}
+
 # Loop to change wallpaper every 15 minutes (900 seconds)
 while true; do
     kill_instance
-    set_wallpaper
+    # Check if first launch
+    if [ ! -e "$RELOAD_FILE" ]; then
+        set_default_wallpaper
+        sleep 30
+    fi
+    fetch_wallpaper
     sleep 900 # Sleep for 15 minutes
 done
