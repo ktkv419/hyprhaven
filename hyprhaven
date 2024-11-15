@@ -7,7 +7,7 @@
 #
 # Requires jq and needs to be ran on start alongside of hyprpaper. Can be ran multiple times
 
-BASE_URL="https://wallhaven.cc/api/v1/search?"
+URL="https://wallhaven.cc/api/v1/search?"
 WALLPAPER_DIR="/tmp/"
 WALLPAPER_DEFAULT_DIR="${HOME}/.local/share/wallpapers/"
 
@@ -33,8 +33,6 @@ SORTING="views"
 MIN_RES="1920x1080"
 
 RATIOS="16x9,16x10,21x9"
-
-# export $(grep -v '^#' .env | xargs)
 
 kill_instance() {
     SCRIPT_NAME=$(basename "$0")
@@ -65,11 +63,41 @@ set_wallpaper() {
     done
 }
 
+generate_url() {
+    if [ -n "$CATEGORIES" ]; then
+        URL="${URL}&categories=$CATEGORIES"
+    fi
+    if [ -n "$PURITY" ]; then
+        URL="${URL}&purity=$PURITY"
+    fi
+    if [ -n "$COLOR" ]; then
+        URL="${URL}&colors=$COLOR"
+    fi
+    if [ -n "$SORTING" ]; then
+        URL="${URL}&sorting=$SORTING"
+    fi
+    if [ -n "$MIN_RES" ]; then
+        URL="${URL}&atleast=$MIN_RES"
+    fi
+    if [ -n "$RATIOS" ]; then
+        URL="${URL}&ratios=$RATIOS"
+    fi
+    if [ -n "$PAGE" ]; then
+        URL="${URL}&page=$PAGE"
+    fi
+    # API_KEY is sourced from current environment variables
+    if [ -n "$WALLHAVEN_API" ]; then
+        URL="${URL}&apikey=${WALLHAVEN_API}"
+    fi
+}
+
 fetch_wallpaper() {
-    URL="https://wallhaven.cc/api/v1/search?categories=$CATEGORIES&purity=$PURITY&colors=$COLOR&sorting=$SORTING&atleast=$MIN_RES&ratios=$RATIOS&page=$PAGE"
+    generate_url
     IMAGE_URL=$(curl -s $URL | jq -r ".data.[$INDEX].path")
     if [ "$IMAGE_URL" != "null" ] && [ -n "$IMAGE_URL" ]; then
         IMAGE="${WALLPAPER_DIR}${IMAGE_URL##*/}"
+        echo "Making request to Wallhaven"
+        echo $IMAGE_URL
         curl -s -o $IMAGE -w "%{http_code}" "$IMAGE_URL"
         set_wallpaper
     else
