@@ -10,7 +10,9 @@ This script fetches wallpapers from [wallhaven.cc](https://wallhaven.cc/) and pa
 
 1. Move script file to a location, that is added to your path, for example `~/.local/bin/`
 
-2. Autolaunch hyprhaven with [hyprland](https://github.com/hyprwm/Hyprland)
+2. Install [jq](https://github.com/jqlang/jq)
+
+3. Add hyprhaven to [hyprland](https://github.com/hyprwm/Hyprland) config
 
 _~/.config/hypr/hyprland.conf_
 
