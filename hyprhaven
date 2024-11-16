@@ -49,7 +49,7 @@ SORTING="favorites"
 MIN_RES="1920x1080"
 
 # All wide
-RATIOS="16x9,16x10,21x9,32x9,48x9"
+RATIOS="landscape"
 
 kill_instance() {
     # Find current instance name and PID
