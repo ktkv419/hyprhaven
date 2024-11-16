@@ -7,7 +7,6 @@
 #
 # Requires jq and needs to be ran on start alongside of hyprpaper. Can be ran multiple times
 
-URL="https://wallhaven.cc/api/v1/search?"
 WALLPAPER_DIR="/tmp/"
 WALLPAPER_DEFAULT_DIR="${HOME}/.local/share/wallpapers/"
 
@@ -16,28 +15,49 @@ RELOAD_FILE="/tmp/.hyprhaven_reload"
 # Setting up search query params
 # https://wallhaven.cc/help/api#search
 
-COLORS=("663399" "333399" "0066cc")
+# Queries
+QUERY_LIST=()
+QUERY=$(IFS=','; echo "${QUERY_LIST[*]}" | sed 's/ /+/g')
 
-COLOR=${COLORS[$RANDOM % ${#COLORS[@]}]}
+# Available colors
+# 660000 990000 cc0000 cc3333 ea4c88
+# 993399 663399 333399 0066cc 0099cc
+# 66cccc 77cc33 669900 336600 666600
+# 999900 cccc33 ffff00 ffcc33 ff9900
+# ff6600 cc6633 996633 663300 000000
+# 999999 cccccc ffffff 424153 
+COLOR_LIST=("663399" "333399" "0066cc")
 
-PAGE=$(((RANDOM % 5) + 1))
+# Join colors into string like "663399,333399,0066cc" for wallhaven api
+COLORS=$(IFS=','; echo "${COLOR_LIST[*]}")
 
-INDEX=$((RANDOM % 20))
+# How many pages to fetch
+FETCH_PAGES=2
 
+# Image categories
+# 100/010/001 (general/anime/people)
 CATEGORIES=010
 
+# Image purity
+# 100/010/001 (sfw/sketchy/nsfw)
 PURITY=100
 
-SORTING="views"
+# Sorting algorithm
+# date_added, relevance, random, views, favorites, toplist
+SORTING="favorites"
 
 MIN_RES="1920x1080"
 
-RATIOS="16x9,16x10,21x9"
+# All wide
+RATIOS="16x9,16x10,21x9,32x9,48x9"
 
 kill_instance() {
+    # Find current instance name and PID
     SCRIPT_NAME=$(basename "$0")
     CURRENT_PID=$$
 
+    # Kill all other instances
+    # Careful, it kills not just instances, just anything that has hyprhaven name in it
     if [ $(pgrep -f "$SCRIPT_NAME" | wc -l) -gt 2 ]; then
         OLD_PIDS=$(pgrep -f "$SCRIPT_NAME")
         for PID in $OLD_PIDS; do
@@ -53,10 +73,12 @@ kill_instance() {
 }
 
 set_wallpaper() {
+    # Unload previous wallpaper
     for WALLPAPER in $(hyprctl hyprpaper listloaded); do
         hyprctl hyprpaper unload "$WALLPAPER"
     done
 
+    # Load new wallpaper
     for monitor in $(hyprctl monitors | grep "Monitor" | cut -d " " -f 2); do
         hyprctl hyprpaper preload $IMAGE
         hyprctl hyprpaper wallpaper "$monitor,$IMAGE"
@@ -64,14 +86,17 @@ set_wallpaper() {
 }
 
 generate_url() {
+    URL="https://wallhaven.cc/api/v1/search?"
+    # Query should always be set, even though it's empty or non existent just to start params string
+    URL="${URL}q=$QUERY"
     if [ -n "$CATEGORIES" ]; then
         URL="${URL}&categories=$CATEGORIES"
     fi
     if [ -n "$PURITY" ]; then
         URL="${URL}&purity=$PURITY"
     fi
-    if [ -n "$COLOR" ]; then
-        URL="${URL}&colors=$COLOR"
+    if [ -n "$COLORS" ]; then
+        URL="${URL}&colors=$COLORS"
     fi
     if [ -n "$SORTING" ]; then
         URL="${URL}&sorting=$SORTING"
@@ -89,19 +114,53 @@ generate_url() {
     if [ -n "$WALLHAVEN_API" ]; then
         URL="${URL}&apikey=${WALLHAVEN_API}"
     fi
+    echo $URL
 }
 
 fetch_wallpaper() {
     generate_url
-    IMAGE_URL=$(curl -s $URL | jq -r ".data.[$INDEX].path")
+
+    # Fetch any data just to get amount of images and pages
+    DATA=$(curl -s $URL)
+    ALL_IMAGES=$(echo $DATA | jq ".meta.total")
+
+    # Get total amount of pages
+    TOTAL_PAGES=$(echo $DATA | jq ".meta.last_page")
+
+    # Check whether we want to fetch more pages than we have in response
+    if [ "$TOTAL_PAGES" -lt "$FETCH_PAGES" ]; then
+        FETCH_PAGES=$TOTAL_PAGES
+    fi
+
+    # Randomize page
+    PAGE=$(((RANDOM % FETCH_PAGES) + 1))
+
+    # Check whether page is last, therefore use the rest of the images and not default 24 per page limit
+    if [ "$PAGE" -eq "$TOTAL_PAGES" ]; then
+        INDEX=$((ALL_IMAGES % 24))
+    else
+        INDEX=24
+    fi
+
+    # Get random image from page
+    INDEX=$((RANDOM % INDEX))
+
+    # Generate url to fetch needed page
+    generate_url
+
+    # Get image
+    IMAGE_URL=$(curl -s $URL | jq -r ".data[$INDEX].path")
+
     if [ "$IMAGE_URL" != "null" ] && [ -n "$IMAGE_URL" ]; then
         IMAGE="${WALLPAPER_DIR}${IMAGE_URL##*/}"
         echo "Making request to Wallhaven"
+        notify-send -u low "Fetching wallpaper from wallhaven" -i "image-x-generic"
         echo $IMAGE_URL
         curl -s -o $IMAGE -w "%{http_code}" "$IMAGE_URL"
         set_wallpaper
     else
         echo "Couldn't access Wallhaven"
+        notify-send -u normal "Couldn't load image from wallhaven" -i "image-x-generic"
     fi
 }
 
