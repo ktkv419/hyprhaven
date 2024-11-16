@@ -138,6 +138,9 @@ fetch_wallpaper() {
     # Check whether page is last, therefore use the rest of the images and not default 24 per page limit
     if [ "$PAGE" -eq "$TOTAL_PAGES" ]; then
         INDEX=$((ALL_IMAGES % 24))
+        if [ "$INDEX" -eq 0 ]; then
+            INDEX=24
+        fi
     else
         INDEX=24
     fi
