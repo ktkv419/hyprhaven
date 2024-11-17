@@ -15,36 +15,134 @@ RELOAD_FILE="/tmp/.hyprhaven_reload"
 # Setting up search query params
 # https://wallhaven.cc/help/api#search
 
-# Queries
-QUERY_LIST=()
-QUERY=$(IFS=','; echo "${QUERY_LIST[*]}" | sed 's/ /+/g')
+# Presets
+# PRESET="classic-art"
+###############
+# Classic art #
+###############
+# QUERY_LIST=("classic art")
+# CATEGORIES=111
+# PURITY=110
+# COLOR_LIST=("663399" "333399" "0066cc")
+
+##############
+# Cityscapes #
+##############
+# QUERY_LIST=("city|cityscape")
+# CATEGORIES=101
+# PURITY=100
+# COLOR_LIST=("663399" "333399" "0066cc")
+
+PRESET="cityscapes"
+# COLOR_LIST=("663399" "333399" "0066cc")
+
+if [ $1 ]; then
+    PRESET=$1
+fi
+
+case $PRESET in
+"classic-art")
+    SORTING="favorites"
+    QUERY_LIST=("classic art")
+    CATEGORIES=111
+    PURITY=110
+    ;;
+"landscape")
+    SORTING="favorites"
+    QUERY_LIST=("landscape&nature")
+    CATEGORIES=100
+    PURITY=100
+    ;;
+"cyberpunk")
+    SORTING="favorites"
+    QUERY_LIST=("cyberpunk")
+    CATEGORIES=110
+    PURITY=100
+    ;;
+"abstract")
+    SORTING="favorites"
+    QUERY_LIST=("absctract|shapes")
+    CATEGORIES=100
+    PURITY=100
+    ;;
+"cityscapes")
+    SORTING="favorites"
+    QUERY_LIST=("city|cityscape")
+    CATEGORIES=101
+    PURITY=100
+    ;;
+"anime")
+    SORTING="favorites"
+    CATEGORIES=010
+    PURITY=100
+    ;;
+"anime-spicy")
+    SORTING="favorites"
+    CATEGORIES=010
+    PURITY=010
+    ;;
+"top1d")
+    SORTING="toplist"
+    TOPRANGE="1d"
+    PURITY=100
+    ;;
+"top1w")
+    SORTING="toplist"
+    TOPRANGE="1w"
+    PURITY=100
+    ;;
+"top1m")
+    SORTING="toplist"
+    TOPRANGE="1M"
+    PURITY=100
+    ;;
+"top1y")
+    SORTING="toplist"
+    TOPRANGE="1y"
+    PURITY=100
+    ;;
+"random")
+    SORTING="random"
+    CATEGORIES=111
+    PURITY=100
+    ;;
+esac
+
+QUERY=$(
+    IFS=','
+    echo "${QUERY_LIST[*]}" | sed 's/ /+/g'
+)
 
 # Available colors
-# 660000 990000 cc0000 cc3333 ea4c88
-# 993399 663399 333399 0066cc 0099cc
-# 66cccc 77cc33 669900 336600 666600
-# 999900 cccc33 ffff00 ffcc33 ff9900
-# ff6600 cc6633 996633 663300 000000
-# 999999 cccccc ffffff 424153 
-COLOR_LIST=("663399" "333399" "0066cc")
+# #660000 #990000 #cc0000 #cc3333 #ea4c88
+# #993399 #663399 #333399 #0066cc #0099cc
+# #66cccc #77cc33 #669900 #336600 #666600
+# #999900 #cccc33 #ffff00 #ffcc33 #ff9900
+# #ff6600 #cc6633 #996633 #663300 #000000
+# #999999 #cccccc #ffffff #424153
+# !Remove # before pasting colors
+# COLOR_LIST=("660000 990000 cc0000 cc3333 ea4c88 993399 663399 333399 0066cc 0099cc 66cccc 77cc33 669900 336600 666600 999900 cccc33 ffff00 ffcc33 ff9900 ff6600 cc6633 996633 663300 000000 999999 cccccc ffffff 424153")
 
 # Join colors into string like "663399,333399,0066cc" for wallhaven api
-COLORS=$(IFS=','; echo "${COLOR_LIST[*]}")
+COLORS=$(
+    IFS=','
+    echo "${COLOR_LIST[*]}"
+)
 
 # How many pages to fetch
-FETCH_PAGES=2
+FETCH_PAGES=10
 
 # Image categories
 # 100/010/001 (general/anime/people)
-CATEGORIES=010
+# CATEGORIES=111
 
 # Image purity
 # 100/010/001 (sfw/sketchy/nsfw)
-PURITY=100
+# PURITY=100
 
 # Sorting algorithm
 # date_added, relevance, random, views, favorites, toplist
-SORTING="favorites"
+# SORTING="favorites"
 
 MIN_RES="1920x1080"
 
@@ -109,6 +207,9 @@ generate_url() {
     fi
     if [ -n "$PAGE" ]; then
         URL="${URL}&page=$PAGE"
+    fi
+    if [ -n "$TOPRANGE" ]; then
+        URL="${URL}&topRange=$TOPRANGE"
     fi
     # API_KEY is sourced from current environment variables
     if [ -n "$WALLHAVEN_API" ]; then

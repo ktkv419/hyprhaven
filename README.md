@@ -32,7 +32,18 @@ _Hot-reloading is done through new hyprhaven instance killing older instanced_
 
 ## Configuration
 
+### Granual configuration
+
 Currently only in-file configuration is set up. In order to change these settings you have to manually change `hyprhaven` file.
+
+### Presets
+
+You can run one of the presets (presented in the script itself) by passing preset name to the script `hyprhaven <preset_name>`
+
+Current list of presets
+- classic-art
+- cityscapes (default)
+- random
 
 ## API key
 
