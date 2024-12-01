@@ -10,8 +10,6 @@
 WALLPAPER_DIR="/tmp/"
 WALLPAPER_DEFAULT_DIR="${HOME}/.local/share/wallpapers/"
 
-RELOAD_FILE="/tmp/.hyprhaven_reload"
-
 # Setting up search query params
 # https://wallhaven.cc/help/api#search
 
@@ -161,12 +159,9 @@ kill_instance() {
         for PID in $OLD_PIDS; do
             if [ "$PID" != "$CURRENT_PID" ]; then
                 echo "Killing old instance with PID: $PID"
-                touch $RELOAD_FILE
                 kill "$PID"
             fi
         done
-    else
-        rm $RELOAD_FILE
     fi
 }
 
@@ -264,6 +259,7 @@ fetch_wallpaper() {
         set_wallpaper
     else
         echo "Couldn't access Wallhaven"
+        set_default_wallpaper
         notify-send -u normal "Couldn't load image from wallhaven" -i "image-x-generic"
     fi
 }
@@ -276,11 +272,6 @@ set_default_wallpaper() {
 # Loop to change wallpaper every 15 minutes (900 seconds)
 while true; do
     kill_instance
-    # Check if first launch
-    if [ ! -e "$RELOAD_FILE" ]; then
-        set_default_wallpaper
-        sleep 30
-    fi
     fetch_wallpaper
     sleep 900 # Sleep for 15 minutes
 done
