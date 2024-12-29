@@ -1,7 +1,7 @@
 # Define variables for easy configuration
 GO=go
 BINARY_NAME=hyprhaven
-LDFLAGS=-s -w
+LDFLAGS=-s -w 
 
 # Default target, will build the binary
 all: build
@@ -36,11 +36,14 @@ doc:
 
 # Cross-compile for different platforms (Linux/Windows/macOS)
 build-linux:
-	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME) .
+	GOOS=linux GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
+
+build-windows-debug:
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME).exe .
 
 build-windows:
-	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME).exe .
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS) -H windowsgui" -o $(BINARY_NAME).exe .
 
 build-darwin:
-	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME) .
+	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
 
