@@ -8,14 +8,15 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/reujab/wallpaper"
 )
 
 type Meta struct {
-	Total   int    `json:"total"`
-	Page    int    `json:"page"`
-	PerPage string `json:"per_page"`
+	Total   int `json:"total"`
+	Page    int `json:"page"`
+	PerPage int `json:"per_page"`
 }
 
 type Image struct {
@@ -28,29 +29,44 @@ type Response struct {
 	Meta Meta    `json:"meta"`
 }
 
-func main() {
-	initReqUrl, _ := url.Parse("https://wallhaven.cc/api/v1/search")
+type RequestParams struct {
+	PAGE_QUERY int
+	SORTING    string
+	CATEGORIES string
+	QUERY      string
+	PURITY     string
+}
+
+func setWallpaper() {
+	REQUEST_PARAMS := RequestParams{
+		PAGE_QUERY: 5,
+		SORTING:    "favorites",
+		CATEGORIES: "010",
+		QUERY:      "",
+		PURITY:     "100",
+	}
+
+	initReqUrl, err := url.Parse("https://wallhaven.cc/api/v1/search")
 
 	initReqParams := url.Values{}
 
-	initReqParams.Add("sorting", "favorites") // Example query: "nature"
-	initReqParams.Add("categories", "010")    // Example: page 1
-	initReqParams.Add("purity", "100")
+	initReqParams.Add("sorting", REQUEST_PARAMS.SORTING)
+	initReqParams.Add("categories", REQUEST_PARAMS.CATEGORIES)
+	initReqParams.Add("q", REQUEST_PARAMS.QUERY)
+	initReqParams.Add("purity", REQUEST_PARAMS.PURITY)
 
 	initReqUrl.RawQuery = initReqParams.Encode()
 
-	// fmt.Print(parsedURL)
+	if err != nil {
+		log.Fatalf("Error decoding JSON request: %v", err)
+	}
 
-	// if err == nil {
-	// 	fmt.Print(err)
-	// }
-
-	fmt.Println(initReqUrl.String())
 	initRes, err := http.Get(initReqUrl.String())
 
 	if err != nil {
 		log.Fatalf("Error making GET request: %v", err)
 	}
+
 	defer initRes.Body.Close()
 
 	// Check if the response status is OK
@@ -66,22 +82,43 @@ func main() {
 		log.Fatalf("Error decoding JSON response: %v", err)
 	}
 
-	wallpaperCount := rand.Intn(initApiResponse.Meta.Total)
+	wallpaperPages := initApiResponse.Meta.Total/initApiResponse.Meta.PerPage + 1
 
-	wallpaperPage := wallpaperCount / 24
+	var wallpaperPage int
+	var wallpaperPosition int
 
-	wallpaperPosition := rand.Intn(24)
+	if wallpaperPages < REQUEST_PARAMS.PAGE_QUERY {
+		if initApiResponse.Meta.Total <= initApiResponse.Meta.PerPage {
+			wallpaperPage = 1
+			wallpaperPosition = rand.Intn(initApiResponse.Meta.Total)
+		} else {
+			lastPage := (initApiResponse.Meta.Total + initApiResponse.Meta.PerPage - 1) / initApiResponse.Meta.PerPage
+			wallpaperPage = rand.Intn(lastPage) + 1
+			if wallpaperPage == lastPage {
+				wallpaperPosition = rand.Intn(initApiResponse.Meta.Total % initApiResponse.Meta.PerPage)
+			} else {
+				wallpaperPosition = rand.Intn(initApiResponse.Meta.PerPage)
+			}
+		}
+	} else {
+		//  BUG: on popular requests fetches wrong page
+		wallpaperPage = rand.Intn(REQUEST_PARAMS.PAGE_QUERY) + 1
+		wallpaperPosition = rand.Intn(initApiResponse.Meta.PerPage)
+	}
 
 	wallpaperReqUrl, _ := url.Parse("https://wallhaven.cc/api/v1/search")
 
 	wallpaperReqParams := url.Values{}
 
-	wallpaperReqParams.Add("sorting", "favorites")              // Example query: "nature"
-	wallpaperReqParams.Add("categories", "010")                 // Example: page 1
-	wallpaperReqParams.Add("page", strconv.Itoa(wallpaperPage)) // Example: page 1
-	// params.Add("purity", "100")
+	wallpaperReqParams.Add("sorting", REQUEST_PARAMS.SORTING)
+	wallpaperReqParams.Add("categories", REQUEST_PARAMS.CATEGORIES)
+	wallpaperReqParams.Add("q", REQUEST_PARAMS.QUERY)
+	wallpaperReqParams.Add("page", strconv.Itoa(wallpaperPage))
+	wallpaperReqParams.Add("purity", REQUEST_PARAMS.PURITY)
 
-	wallpaperReqUrl.RawQuery = initReqParams.Encode()
+	wallpaperReqUrl.RawQuery = wallpaperReqParams.Encode()
+
+	fmt.Println(wallpaperReqUrl.String())
 
 	wallpaperRes, err := http.Get(wallpaperReqUrl.String())
 
@@ -105,9 +142,17 @@ func main() {
 
 	wallpaperUrl := wallpaperApiResponse.Data[wallpaperPosition].PATH
 
-	wallpaperErr := wallpaper.SetFromURL(wallpaperUrl)
+	err = wallpaper.SetFromURL(wallpaperUrl)
 
-	if wallpaperErr != nil {
-		fmt.Print(wallpaperErr)
+	if err != nil {
+		log.Fatalf("Error setting wallpaper: %v", err)
+	}
+
+}
+
+func main() {
+	for {
+		setWallpaper()
+		time.Sleep(15 * time.Minute)
 	}
 }
