@@ -7,13 +7,33 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/reujab/wallpaper"
+	"github.com/shirou/gopsutil/process"
 )
+
+func TerminateProcess(name string) error {
+	processes, err := process.Processes()
+	currentPid := os.Getpid()
+	if err != nil {
+		return err
+	}
+	for _, p := range processes {
+		n, err := p.Name()
+		if err != nil {
+			return err
+		}
+		if n == name && int(p.Pid) != currentPid {
+			return p.Terminate()
+		}
+	}
+	return fmt.Errorf("process not found")
+}
 
 type Meta struct {
 	Total   int `json:"total"`
@@ -160,6 +180,7 @@ func setWallpaper() {
 }
 
 func main() {
+	TerminateProcess("hyprhaven.exe")
 	for {
 		setWallpaper()
 		time.Sleep(15 * time.Minute)
