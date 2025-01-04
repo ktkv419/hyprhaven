@@ -36,9 +36,9 @@ func TerminateProcess(name string) error {
 }
 
 type Meta struct {
-	Total   int `json:"total"`
-	Page    int `json:"page"`
-	PerPage int `json:"per_page"`
+	Total   int    `json:"total"`
+	Page    int    `json:"page"`
+	PerPage string `json:"per_page"`
 }
 
 type Image struct {
@@ -58,6 +58,7 @@ type RequestParams struct {
 	PURITY     string
 	ATLEAST    string
 	RATIOS     string
+	APIKEY     string
 }
 
 func setWallpaper() {
@@ -70,6 +71,7 @@ func setWallpaper() {
 		PURITY:     "100",
 		ATLEAST:    "1920x1080",
 		RATIOS:     "landscape",
+		// APIKEY:     "xxx",
 	}
 
 	initReqUrl, err := url.Parse("https://wallhaven.cc/api/v1/search")
@@ -110,28 +112,30 @@ func setWallpaper() {
 		log.Fatalf("Error decoding JSON response: %v", err)
 	}
 
-	wallpaperPages := initApiResponse.Meta.Total/initApiResponse.Meta.PerPage + 1
+	perPageInt, _ := strconv.Atoi(initApiResponse.Meta.PerPage)
+
+	wallpaperPages := initApiResponse.Meta.Total/perPageInt + 1
 
 	var wallpaperPage int
 	var wallpaperPosition int
 
 	if wallpaperPages < PAGE_QUERY {
-		if initApiResponse.Meta.Total <= initApiResponse.Meta.PerPage {
+		if initApiResponse.Meta.Total <= perPageInt {
 			wallpaperPage = 1
 			wallpaperPosition = rand.Intn(initApiResponse.Meta.Total)
 		} else {
-			lastPage := (initApiResponse.Meta.Total + initApiResponse.Meta.PerPage - 1) / initApiResponse.Meta.PerPage
+			lastPage := (initApiResponse.Meta.Total + perPageInt - 1) / perPageInt
 			wallpaperPage = rand.Intn(lastPage) + 1
 			if wallpaperPage == lastPage {
-				wallpaperPosition = rand.Intn(initApiResponse.Meta.Total % initApiResponse.Meta.PerPage)
+				wallpaperPosition = rand.Intn(initApiResponse.Meta.Total % perPageInt)
 			} else {
-				wallpaperPosition = rand.Intn(initApiResponse.Meta.PerPage)
+				wallpaperPosition = rand.Intn(perPageInt)
 			}
 		}
 	} else {
 		//  BUG: on popular requests fetches wrong page
 		wallpaperPage = rand.Intn(PAGE_QUERY) + 1
-		wallpaperPosition = rand.Intn(initApiResponse.Meta.PerPage)
+		wallpaperPosition = rand.Intn(perPageInt)
 	}
 
 	wallpaperReqUrl, _ := url.Parse("https://wallhaven.cc/api/v1/search")
