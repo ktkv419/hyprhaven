@@ -7,7 +7,9 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/reujab/wallpaper"
@@ -30,30 +32,36 @@ type Response struct {
 }
 
 type RequestParams struct {
-	PAGE_QUERY int
 	SORTING    string
 	CATEGORIES string
-	QUERY      string
+	Q          string
 	PURITY     string
+	ATLEAST    string
+	RATIOS     string
 }
 
 func setWallpaper() {
+	PAGE_QUERY := 5
+
 	REQUEST_PARAMS := RequestParams{
-		PAGE_QUERY: 5,
 		SORTING:    "favorites",
 		CATEGORIES: "010",
-		QUERY:      "",
+		Q:          "",
 		PURITY:     "100",
+		ATLEAST:    "1920x1080",
+		RATIOS:     "landscape",
 	}
 
 	initReqUrl, err := url.Parse("https://wallhaven.cc/api/v1/search")
 
 	initReqParams := url.Values{}
 
-	initReqParams.Add("sorting", REQUEST_PARAMS.SORTING)
-	initReqParams.Add("categories", REQUEST_PARAMS.CATEGORIES)
-	initReqParams.Add("q", REQUEST_PARAMS.QUERY)
-	initReqParams.Add("purity", REQUEST_PARAMS.PURITY)
+	val := reflect.ValueOf(REQUEST_PARAMS)
+	typ := reflect.TypeOf(REQUEST_PARAMS)
+
+	for i := 0; i < val.NumField(); i++ {
+		initReqParams.Add(strings.ToLower(typ.Field(i).Name), val.Field(i).String())
+	}
 
 	initReqUrl.RawQuery = initReqParams.Encode()
 
@@ -87,7 +95,7 @@ func setWallpaper() {
 	var wallpaperPage int
 	var wallpaperPosition int
 
-	if wallpaperPages < REQUEST_PARAMS.PAGE_QUERY {
+	if wallpaperPages < PAGE_QUERY {
 		if initApiResponse.Meta.Total <= initApiResponse.Meta.PerPage {
 			wallpaperPage = 1
 			wallpaperPosition = rand.Intn(initApiResponse.Meta.Total)
@@ -102,7 +110,7 @@ func setWallpaper() {
 		}
 	} else {
 		//  BUG: on popular requests fetches wrong page
-		wallpaperPage = rand.Intn(REQUEST_PARAMS.PAGE_QUERY) + 1
+		wallpaperPage = rand.Intn(PAGE_QUERY) + 1
 		wallpaperPosition = rand.Intn(initApiResponse.Meta.PerPage)
 	}
 
@@ -110,11 +118,11 @@ func setWallpaper() {
 
 	wallpaperReqParams := url.Values{}
 
-	wallpaperReqParams.Add("sorting", REQUEST_PARAMS.SORTING)
-	wallpaperReqParams.Add("categories", REQUEST_PARAMS.CATEGORIES)
-	wallpaperReqParams.Add("q", REQUEST_PARAMS.QUERY)
+	for i := 0; i < val.NumField(); i++ {
+		wallpaperReqParams.Add(strings.ToLower(typ.Field(i).Name), val.Field(i).String())
+	}
+
 	wallpaperReqParams.Add("page", strconv.Itoa(wallpaperPage))
-	wallpaperReqParams.Add("purity", REQUEST_PARAMS.PURITY)
 
 	wallpaperReqUrl.RawQuery = wallpaperReqParams.Encode()
 
@@ -142,6 +150,7 @@ func setWallpaper() {
 
 	wallpaperUrl := wallpaperApiResponse.Data[wallpaperPosition].PATH
 
+	wallpaper.SetMode(wallpaper.Crop)
 	err = wallpaper.SetFromURL(wallpaperUrl)
 
 	if err != nil {
