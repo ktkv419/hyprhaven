@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -60,17 +61,7 @@ type RequestParams struct {
 	RATIOS     string
 }
 
-func setWallpaper() {
-	PAGE_QUERY := 5
-
-	REQUEST_PARAMS := RequestParams{
-		SORTING:    "favorites",
-		CATEGORIES: "010",
-		Q:          "",
-		PURITY:     "100",
-		ATLEAST:    "1920x1080",
-		RATIOS:     "landscape",
-	}
+func setWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) {
 
 	initReqUrl, err := url.Parse("https://wallhaven.cc/api/v1/search")
 
@@ -181,8 +172,28 @@ func setWallpaper() {
 
 func main() {
 	TerminateProcess("hyprhaven.exe")
+	timerFlag := flag.Int("t", 15, "")
+	PAGE_QUERY := flag.Int("pq", 5, "")
+
+	sortingFlag := flag.String("s", "favorites", "")
+	categoriesFlag := flag.String("c", "010", "")
+	queryFlag := flag.String("q", "", "")
+	purityFlag := flag.String("p", "100", "")
+	atLeastFlag := flag.String("sz", "1920x1080", "")
+
+	flag.Parse()
+
+	REQUEST_PARAMS := RequestParams{
+		SORTING:    *sortingFlag,
+		CATEGORIES: *categoriesFlag,
+		Q:          *queryFlag,
+		PURITY:     *purityFlag,
+		ATLEAST:    *atLeastFlag,
+		RATIOS:     "landscape",
+	}
+
 	for {
-		setWallpaper()
-		time.Sleep(15 * time.Minute)
+		setWallpaper(REQUEST_PARAMS, *PAGE_QUERY)
+		time.Sleep(time.Duration(*timerFlag) * time.Minute)
 	}
 }
