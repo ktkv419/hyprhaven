@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,41 @@ type Meta struct {
 	PerPage int `json:"per_page"`
 }
 
+// UnmarshalJSON allows us to customize how the `PerPage` field is unmarshalled
+func (m *Meta) UnmarshalJSON(data []byte) error {
+	var temp struct {
+		Total   int         `json:"total"`
+		Page    int         `json:"page"`
+		PerPage interface{} `json:"per_page"`
+	}
+
+	// First, unmarshal into the temporary struct
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	// Assign values to the Meta struct
+	m.Total = temp.Total
+	m.Page = temp.Page
+
+	// Handle the `perPage` value dynamically
+	switch v := temp.PerPage.(type) {
+	case float64: // If it's a float64 (which is how numbers are unmarshalled in JSON)
+		m.PerPage = int(v)
+	case string:
+		// If it's a string, try to convert it to an integer
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("invalid perPage value: %v", v)
+		}
+		m.PerPage = parsed
+	default:
+		return fmt.Errorf("unsupported perPage type: %T", v)
+	}
+
+	return nil
+}
+
 type Image struct {
 	ID   string `json:"id"`
 	PATH string `json:"path"`
@@ -59,6 +95,7 @@ type RequestParams struct {
 	PURITY     string
 	ATLEAST    string
 	RATIOS     string
+	APIKEY     string
 }
 
 func setWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) {
@@ -180,8 +217,14 @@ func main() {
 	queryFlag := flag.String("q", "", "")
 	purityFlag := flag.String("p", "100", "")
 	atLeastFlag := flag.String("sz", "1920x1080", "")
+	apikeyFlag := flag.String("key", "", "")
 
 	flag.Parse()
+
+	unsafeRegex, _ := regexp.Compile(`/\.\.1/`)
+	if !unsafeRegex.MatchString(*purityFlag) && *apikeyFlag == "" {
+		*purityFlag = string([]rune(*purityFlag)[0]) + "10"
+	}
 
 	REQUEST_PARAMS := RequestParams{
 		SORTING:    *sortingFlag,
@@ -189,6 +232,7 @@ func main() {
 		Q:          *queryFlag,
 		PURITY:     *purityFlag,
 		ATLEAST:    *atLeastFlag,
+		APIKEY:     *apikeyFlag,
 		RATIOS:     "landscape",
 	}
 
