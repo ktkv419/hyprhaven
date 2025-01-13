@@ -221,9 +221,10 @@ func main() {
 
 	flag.Parse()
 
-	unsafeRegex, _ := regexp.Compile(`/\.\.1/`)
-	if !unsafeRegex.MatchString(*purityFlag) && *apikeyFlag == "" {
-		*purityFlag = string([]rune(*purityFlag)[0]) + "10"
+	unsafeRegex, _ := regexp.Compile(`1$`)
+	if unsafeRegex.MatchString(*purityFlag) && *apikeyFlag == "" {
+		// Replace the last character with '0'
+		*purityFlag = (*purityFlag)[:len(*purityFlag)-1] + "0"
 	}
 
 	REQUEST_PARAMS := RequestParams{
