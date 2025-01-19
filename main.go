@@ -218,6 +218,7 @@ func main() {
 	purityFlag := flag.String("p", "100", "")
 	atLeastFlag := flag.String("sz", "1920x1080", "")
 	apikeyFlag := flag.String("key", "", "")
+	ratioFlag := flag.String("r", "landscape", "")
 
 	flag.Parse()
 
@@ -234,7 +235,7 @@ func main() {
 		PURITY:     *purityFlag,
 		ATLEAST:    *atLeastFlag,
 		APIKEY:     *apikeyFlag,
-		RATIOS:     "landscape",
+		RATIOS:     *ratioFlag,
 	}
 
 	for {
