@@ -2,6 +2,8 @@
 
 <p align="center">Tired of your own wallpaper collection? Hyprhaven has you covered</p>
 
+<p align="center"><img src=".repo/images/hero.png" height="400px" align="center" /></p>
+
 ## About
 
 This script fetches wallpapers from [wallhaven.cc](https://wallhaven.cc/) and sets it as desktop image
