@@ -88,6 +88,10 @@ type Response struct {
 	Meta Meta    `json:"meta"`
 }
 
+type SingleWallpaperResponse struct {
+	Data Image `json:"data"`
+}
+
 type RequestParams struct {
 	SORTING    string
 	CATEGORIES string
@@ -98,7 +102,7 @@ type RequestParams struct {
 	APIKEY     string
 }
 
-func setWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) {
+func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) string {
 
 	initReqUrl, err := url.Parse("https://wallhaven.cc/api/v1/search")
 
@@ -196,15 +200,48 @@ func setWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) {
 		log.Fatalf("Error decoding JSON response: %v", err)
 	}
 
-	wallpaperUrl := wallpaperApiResponse.Data[wallpaperPosition].PATH
+	return wallpaperApiResponse.Data[wallpaperPosition].PATH
+}
 
-	wallpaper.SetMode(wallpaper.Crop)
+func setWallpaper(wallpaperUrl string) {
+	err := wallpaper.SetMode(wallpaper.Crop)
+	if err != nil {
+		log.Fatalf("Error setting wallpaper: %v", err)
+
+	}
+
 	err = wallpaper.SetFromURL(wallpaperUrl)
-
 	if err != nil {
 		log.Fatalf("Error setting wallpaper: %v", err)
 	}
+}
 
+func getWallpaperById(wallpapersFlag string) string {
+	wallpaperList := strings.Split(wallpapersFlag, ",")
+	wallpaperID := wallpaperList[rand.Int()%len(wallpaperList)]
+
+	wallpaperReqUrl, _ := url.Parse("https://wallhaven.cc/api/v1/w/" + wallpaperID)
+	wallpaperRes, err := http.Get(wallpaperReqUrl.String())
+
+	if err != nil {
+		log.Fatalf("Error making GET request: %v", err)
+	}
+	defer wallpaperRes.Body.Close()
+
+	// Check if the response status is OK
+	if wallpaperRes.StatusCode != http.StatusOK {
+		log.Fatalf("Error: received status code %d", wallpaperRes.StatusCode)
+	}
+
+	// Decode the JSON response
+	var wallpaperApiResponse SingleWallpaperResponse
+	err = json.NewDecoder(wallpaperRes.Body).Decode(&wallpaperApiResponse)
+
+	if err != nil {
+		log.Fatalf("Error decoding JSON response: %v", err)
+	}
+
+	return wallpaperApiResponse.Data.PATH
 }
 
 func main() {
@@ -219,6 +256,9 @@ func main() {
 	atLeastFlag := flag.String("sz", "1920x1080", "")
 	apikeyFlag := flag.String("key", "", "")
 	ratioFlag := flag.String("r", "landscape", "")
+
+	// Get wallpaper by IDs
+	wallpapersFlag := flag.String("id", "", "")
 
 	flag.Parse()
 
@@ -239,7 +279,15 @@ func main() {
 	}
 
 	for {
-		setWallpaper(REQUEST_PARAMS, *PAGE_QUERY)
+		var wallpaperURL string
+
+		if *wallpapersFlag == "" {
+			wallpaperURL = fetchWallpaper(REQUEST_PARAMS, *PAGE_QUERY)
+		} else {
+			wallpaperURL = getWallpaperById(*wallpapersFlag)
+		}
+		fmt.Println(wallpaperURL)
+		setWallpaper(wallpaperURL)
 		time.Sleep(time.Duration(*timerFlag) * time.Minute)
 	}
 }

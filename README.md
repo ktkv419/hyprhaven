@@ -42,6 +42,7 @@ The script can be customized using the following command-line flags:
 | `-p`   | `string` | `100`         | The purity level of the wallpapers.                                                                                  |
 | `-key` | `string` | `""`          | Apikey to make user specific/NSFW requests.                                                                          |
 | `-sz`  | `string` | `1920x1080`   | The minimum resolution for the wallpaper.                                                                            |
-| `-r`   | `string` | `landscape`   | The ratio for the wallpaper (accepts values like `21x9` as well as `portrait` or `landscape` for tall/wide pictures. |
+| `-r`   | `string` | `landscape`   | The ratio for the wallpaper (accepts values like `21x9` as well as `portrait` or `landscape` for tall/wide pictures) |
+| `-id`  | `string` | `""`          | IDs list to select wallpaper from (like `"45p3m5,1p6d79"`)                                                           |
 
 All possible values can be referenced from [wallhaven API](https://wallhaven.cc/help/api)
