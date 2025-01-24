@@ -250,7 +250,7 @@ func main() {
 	PAGE_QUERY := flag.Int("pq", 5, "")
 
 	sortingFlag := flag.String("s", "favorites", "")
-	categoriesFlag := flag.String("c", "010", "")
+	categoriesFlag := flag.String("c", "111", "")
 	queryFlag := flag.String("q", "", "")
 	purityFlag := flag.String("p", "100", "")
 	atLeastFlag := flag.String("sz", "1920x1080", "")
