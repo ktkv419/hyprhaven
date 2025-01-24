@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reujab/wallpaper"
+	"github.com/ktkv419/wallpaper"
 	"github.com/shirou/gopsutil/process"
 )
 
@@ -204,13 +204,15 @@ func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) string {
 }
 
 func setWallpaper(wallpaperUrl string) {
-	err := wallpaper.SetMode(wallpaper.Crop)
-	if err != nil {
-		log.Fatalf("Error setting wallpaper: %v", err)
+	fmt.Printf("wallpaper.Desktop: %v\n", wallpaper.Desktop)
+	fmt.Printf("wallpaper.DesktopSession: %v\n", wallpaper.DesktopSession)
+	// err := wallpaper.SetMode(wallpaper.Crop)
+	// if err != nil {
+	// 	log.Fatalf("Error setting wallpaper: %v", err)
+	//
+	// }
 
-	}
-
-	err = wallpaper.SetFromURL(wallpaperUrl)
+	err := wallpaper.SetFromURL(wallpaperUrl)
 	if err != nil {
 		log.Fatalf("Error setting wallpaper: %v", err)
 	}
