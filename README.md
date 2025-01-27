@@ -34,17 +34,19 @@ These are all optional parameters
 
 The script can be customized using the following command-line flags:
 
-| Flag   | Type     | Default Value | Description                                                                                                          |
-| ------ | -------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `-t`   | `int`    | `15`          | The time interval (in minutes) to wait before setting the wallpaper.                                                 |
-| `-pq`  | `int`    | `5`           | The page number to query the wallpaper from the API.                                                                 |
-| `-s`   | `string` | `favorites`   | The sorting criterion for the wallpapers.                                                                            |
-| `-c`   | `string` | `010`         | The category IDs to filter wallpapers.                                                                               |
-| `-q`   | `string` | `""`          | The search query for wallpaper search.                                                                               |
-| `-p`   | `string` | `100`         | The purity level of the wallpapers.                                                                                  |
-| `-key` | `string` | `""`          | Apikey to make user specific/NSFW requests.                                                                          |
-| `-sz`  | `string` | `1920x1080`   | The minimum resolution for the wallpaper.                                                                            |
-| `-r`   | `string` | `landscape`   | The ratio for the wallpaper (accepts values like `21x9` as well as `portrait` or `landscape` for tall/wide pictures) |
-| `-id`  | `string` | `""`          | IDs list to select wallpaper from (like `"45p3m5,1p6d79"`)                                                           |
+| Flag         | Type     | Default Value | Description                                                                                                          |
+| ------------ | -------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `-t`         | `int`    | `15`          | The time interval (in minutes) to wait before setting the wallpaper.                                                 |
+| `-pq`        | `int`    | `5`           | The page number to query the wallpaper from the API.                                                                 |
+| `-s`         | `string` | `favorites`   | The sorting criterion for the wallpapers.                                                                            |
+| `-c`         | `string` | `010`         | The category IDs to filter wallpapers.                                                                               |
+| `-q`         | `string` | `""`          | The search query for wallpaper search.                                                                               |
+| `-p`         | `string` | `100`         | The purity level of the wallpapers.                                                                                  |
+| `--wh-key`   | `string` | `""`          | Apikey to make user specific/NSFW requests.                                                                          |
+| `--mal-key`  | `string` | `""`          | ...                                                                                                                  |
+| `--mal-user` | `string` | `""`          | ...                                                                                                                  |
+| `-sz`        | `string` | `1920x1080`   | The minimum resolution for the wallpaper.                                                                            |
+| `-r`         | `string` | `landscape`   | The ratio for the wallpaper (accepts values like `21x9` as well as `portrait` or `landscape` for tall/wide pictures) |
+| `-id`        | `string` | `""`          | IDs list to select wallpaper from (like `"45p3m5,1p6d79"`)                                                           |
 
 All possible values can be referenced from [wallhaven API](https://wallhaven.cc/help/api)

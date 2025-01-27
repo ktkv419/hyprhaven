@@ -99,7 +99,31 @@ type RequestParams struct {
 	PURITY     string
 	ATLEAST    string
 	RATIOS     string
-	APIKEY     string
+	WH_API     string
+}
+
+type TMALRes struct {
+	Data []struct {
+		Node struct {
+			ID          int    `json:"id"`
+			Title       string `json:"title"`
+			MainPicture struct {
+				Medium string `json:"medium"`
+				Large  string `json:"large"`
+			} `json:"main_picture"`
+		} `json:"node"`
+		ListStatus struct {
+			Status          string    `json:"status"`
+			IsRereading     bool      `json:"is_rereading"`
+			NumVolumesRead  int       `json:"num_volumes_read"`
+			NumChaptersRead int       `json:"num_chapters_read"`
+			Score           int       `json:"score"`
+			UpdatedAt       time.Time `json:"updated_at"`
+			StartDate       string    `json:"start_date"`
+		} `json:"list_status"`
+	} `json:"data"`
+	Paging struct {
+	} `json:"paging"`
 }
 
 func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) string {
@@ -218,6 +242,48 @@ func setWallpaper(wallpaperUrl string) {
 	}
 }
 
+func fetchMALTitles(username string, mal_id string) {
+	if mal_id == "" || username == "" {
+		log.Panic("No MAL credentials are supplied")
+	}
+
+	MALReqUrl, _ := url.Parse("https://api.myanimelist.net/v2/users/" + username + "/animelist?fields=list_status&limit=1000")
+
+	// Set query parameters
+	MALReqParams := url.Values{}
+	MALReqParams.Add("fields", "list_status")
+	MALReqParams.Add("limit", "1000")
+
+	// Encode the query parameters and set it in the URL
+	MALReqUrl.RawQuery = MALReqParams.Encode()
+
+	// Create a new HTTP GET request
+	req, err := http.NewRequest("GET", MALReqUrl.String(), nil)
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+
+	req.Header.Add("x-mal-client-id", mal_id)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var MALRes TMALRes
+	err = json.NewDecoder(resp.Body).Decode(&MALRes)
+	if err != nil {
+		log.Fatalf("Error making GET request: %v", err)
+	}
+
+	// TODO: add parser that returns only "completed" titles
+	fmt.Printf("MALRes.Data: %v\n", MALRes.Data[0].Node.Title)
+}
+
 func getWallpaperById(wallpapersFlag string) string {
 	wallpaperList := strings.Split(wallpapersFlag, ",")
 	wallpaperID := wallpaperList[rand.Int()%len(wallpaperList)]
@@ -256,8 +322,11 @@ func main() {
 	queryFlag := flag.String("q", "", "")
 	purityFlag := flag.String("p", "100", "")
 	atLeastFlag := flag.String("sz", "1920x1080", "")
-	apikeyFlag := flag.String("key", "", "")
+	WHAPI := flag.String("wh-key", "", "")
 	ratioFlag := flag.String("r", "landscape", "")
+
+	MALUserFlag := flag.String("mal-user", "", "")
+	MALApiKey := flag.String("mal-key", "", "")
 
 	// Get wallpaper by IDs
 	wallpapersFlag := flag.String("id", "", "")
@@ -265,7 +334,7 @@ func main() {
 	flag.Parse()
 
 	unsafeRegex, _ := regexp.Compile(`1$`)
-	if unsafeRegex.MatchString(*purityFlag) && *apikeyFlag == "" {
+	if unsafeRegex.MatchString(*purityFlag) && *WHAPI == "" {
 		// Replace the last character with '0'
 		*purityFlag = (*purityFlag)[:len(*purityFlag)-1] + "0"
 	}
@@ -276,13 +345,17 @@ func main() {
 		Q:          *queryFlag,
 		PURITY:     *purityFlag,
 		ATLEAST:    *atLeastFlag,
-		APIKEY:     *apikeyFlag,
+		WH_API:     *WHAPI,
 		RATIOS:     *ratioFlag,
 	}
 
+	// DEBUG: to bypass unused values
+	var _, _, _, _, _, _ = REQUEST_PARAMS, timerFlag, wallpapersFlag, PAGE_QUERY, MALUserFlag, MALApiKey
+
+	// fetchMALTitles(*MALUserFlag, *MALApiKey)
+
 	for {
 		var wallpaperURL string
-
 		if *wallpapersFlag == "" {
 			wallpaperURL = fetchWallpaper(REQUEST_PARAMS, *PAGE_QUERY)
 		} else {
