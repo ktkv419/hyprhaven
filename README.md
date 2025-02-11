@@ -40,11 +40,12 @@ The script can be customized using the following command-line flags:
 | `-pq`        | `int`    | `5`           | The page number to query the wallpaper from the API.                                                                 |
 | `-s`         | `string` | `favorites`   | The sorting criterion for the wallpapers.                                                                            |
 | `-c`         | `string` | `010`         | The category IDs to filter wallpapers.                                                                               |
+| `-C`         | `string` | `""`          | Color _WIP_                                                                                                          |
 | `-q`         | `string` | `""`          | The search query for wallpaper search.                                                                               |
 | `-p`         | `string` | `100`         | The purity level of the wallpapers.                                                                                  |
 | `--wh-key`   | `string` | `""`          | Apikey to make user specific/NSFW requests.                                                                          |
-| `--mal-key`  | `string` | `""`          | ...                                                                                                                  |
-| `--mal-user` | `string` | `""`          | ...                                                                                                                  |
+| `--mal-key`  | `string` | `""`          | MyAnimeList key _WIP ???_                                                                                            |
+| `--mal-user` | `string` | `""`          | MyAnimeList user to fetch animes from _WIP ???_                                                                      |
 | `-sz`        | `string` | `1920x1080`   | The minimum resolution for the wallpaper.                                                                            |
 | `-r`         | `string` | `landscape`   | The ratio for the wallpaper (accepts values like `21x9` as well as `portrait` or `landscape` for tall/wide pictures) |
 | `-id`        | `string` | `""`          | IDs list to select wallpaper from (like `"45p3m5,1p6d79"`)                                                           |
