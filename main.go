@@ -126,7 +126,7 @@ type TMALRes struct {
 	} `json:"paging"`
 }
 
-func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) string {
+func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) (string, error) {
 
 	initReqUrl, err := url.Parse("https://wallhaven.cc/api/v1/search")
 
@@ -148,14 +148,14 @@ func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) string {
 	initRes, err := http.Get(initReqUrl.String())
 
 	if err != nil {
-		log.Fatalf("Error making GET request: %v", err)
+		return "", fmt.Errorf("error making GET request")
 	}
 
 	defer initRes.Body.Close()
 
 	// Check if the response status is OK
 	if initRes.StatusCode != http.StatusOK {
-		log.Fatalf("Error: received status code %d", initRes.StatusCode)
+		return "", fmt.Errorf("error: received status code %d", initRes.StatusCode)
 	}
 
 	// Decode the JSON response
@@ -163,7 +163,7 @@ func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) string {
 	err = json.NewDecoder(initRes.Body).Decode(&initApiResponse)
 
 	if err != nil {
-		log.Fatalf("Error decoding JSON response: %v", err)
+		return "", fmt.Errorf("error decoding JSON response: %v", err)
 	}
 
 	wallpaperPages := initApiResponse.Meta.Total/initApiResponse.Meta.PerPage + 1
@@ -224,7 +224,7 @@ func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) string {
 		log.Fatalf("Error decoding JSON response: %v", err)
 	}
 
-	return wallpaperApiResponse.Data[wallpaperPosition].PATH
+	return wallpaperApiResponse.Data[wallpaperPosition].PATH, nil
 }
 
 func setWallpaper(wallpaperUrl string) {
@@ -242,49 +242,49 @@ func setWallpaper(wallpaperUrl string) {
 	}
 }
 
-func fetchMALTitles(username string, mal_id string) {
-	if mal_id == "" || username == "" {
-		log.Panic("No MAL credentials are supplied")
-	}
+// func fetchMALTitles(username string, mal_id string) {
+// 	if mal_id == "" || username == "" {
+// 		log.Panic("No MAL credentials are supplied")
+// 	}
 
-	MALReqUrl, _ := url.Parse("https://api.myanimelist.net/v2/users/" + username + "/animelist?fields=list_status&limit=1000")
+// 	MALReqUrl, _ := url.Parse("https://api.myanimelist.net/v2/users/" + username + "/animelist?fields=list_status&limit=1000")
 
-	// Set query parameters
-	MALReqParams := url.Values{}
-	MALReqParams.Add("fields", "list_status")
-	MALReqParams.Add("limit", "1000")
+// 	// Set query parameters
+// 	MALReqParams := url.Values{}
+// 	MALReqParams.Add("fields", "list_status")
+// 	MALReqParams.Add("limit", "1000")
 
-	// Encode the query parameters and set it in the URL
-	MALReqUrl.RawQuery = MALReqParams.Encode()
+// 	// Encode the query parameters and set it in the URL
+// 	MALReqUrl.RawQuery = MALReqParams.Encode()
 
-	// Create a new HTTP GET request
-	req, err := http.NewRequest("GET", MALReqUrl.String(), nil)
-	if err != nil {
-		fmt.Println("Error creating request:", err)
-		return
-	}
+// 	// Create a new HTTP GET request
+// 	req, err := http.NewRequest("GET", MALReqUrl.String(), nil)
+// 	if err != nil {
+// 		fmt.Println("Error creating request:", err)
+// 		return
+// 	}
 
-	req.Header.Add("x-mal-client-id", mal_id)
+// 	req.Header.Add("x-mal-client-id", mal_id)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Println("Error making request:", err)
-		return
-	}
-	defer resp.Body.Close()
+// 	client := &http.Client{}
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		fmt.Println("Error making request:", err)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
 
-	var MALRes TMALRes
-	err = json.NewDecoder(resp.Body).Decode(&MALRes)
-	if err != nil {
-		log.Fatalf("Error making GET request: %v", err)
-	}
+// 	var MALRes TMALRes
+// 	err = json.NewDecoder(resp.Body).Decode(&MALRes)
+// 	if err != nil {
+// 		log.Fatalf("Error making GET request: %v", err)
+// 	}
 
-	// TODO: add parser that returns only "completed" titles
-	fmt.Printf("MALRes.Data: %v\n", MALRes.Data[0].Node.Title)
-}
+// 	// TODO: add parser that returns only "completed" titles
+// 	fmt.Printf("MALRes.Data: %v\n", MALRes.Data[0].Node.Title)
+// }
 
-func getWallpaperById(wallpapersFlag string) string {
+func getWallpaperById(wallpapersFlag string) (string, error) {
 	wallpaperList := strings.Split(wallpapersFlag, ",")
 	wallpaperID := wallpaperList[rand.Int()%len(wallpaperList)]
 
@@ -293,6 +293,7 @@ func getWallpaperById(wallpapersFlag string) string {
 
 	if err != nil {
 		log.Fatalf("Error making GET request: %v", err)
+		return "", err
 	}
 	defer wallpaperRes.Body.Close()
 
@@ -309,7 +310,7 @@ func getWallpaperById(wallpapersFlag string) string {
 		log.Fatalf("Error decoding JSON response: %v", err)
 	}
 
-	return wallpaperApiResponse.Data.PATH
+	return wallpaperApiResponse.Data.PATH, nil
 }
 
 func main() {
@@ -356,13 +357,22 @@ func main() {
 
 	for {
 		var wallpaperURL string
+		var err error
+
 		if *wallpapersFlag == "" {
-			wallpaperURL = fetchWallpaper(REQUEST_PARAMS, *PAGE_QUERY)
+			wallpaperURL, err = fetchWallpaper(REQUEST_PARAMS, *PAGE_QUERY)
 		} else {
-			wallpaperURL = getWallpaperById(*wallpapersFlag)
+			wallpaperURL, err = getWallpaperById(*wallpapersFlag)
 		}
-		fmt.Println(wallpaperURL)
-		setWallpaper(wallpaperURL)
+
+		if err == nil {
+			fmt.Println(wallpaperURL)
+			setWallpaper(wallpaperURL)
+		} else {
+			fmt.Println("Couldn't fetch wallpaper, please check your internet connection")
+		}
+
+		fmt.Println("Sleeping for " + strconv.Itoa(*timerFlag) + " minutes")
 		time.Sleep(time.Duration(*timerFlag) * time.Minute)
 	}
 }
