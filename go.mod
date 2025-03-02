@@ -3,7 +3,7 @@ module ktkv419/hyprhaven
 go 1.22.2
 
 require (
-	github.com/ktkv419/wallpaper v1.0.0
+	github.com/ktkv419/wallpaper v1.0.1-0.20250302094050-0fa22fe60e26
 	github.com/shirou/gopsutil v3.21.11+incompatible
 )
 

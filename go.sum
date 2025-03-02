@@ -6,8 +6,8 @@ github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1 h1:EGx4pi6eqNxGa
 github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1/go.mod h1:wJfORRmW1u3UXTncJ5qlYoELFm8eSnnEO6hX4iZ3EWY=
 github.com/jtolds/gls v4.20.0+incompatible h1:xdiiI2gbIgH/gLH7ADydsJ1uDOEzR8yvV7C0MuV77Wo=
 github.com/jtolds/gls v4.20.0+incompatible/go.mod h1:QJZ7F/aHp+rZTRtaJ1ow/lLfFfVYBRgL+9YlvaHOwJU=
-github.com/ktkv419/wallpaper v1.0.0 h1:A2wzAn5fRrwWwmW2cJMT7h8NppAGLlUlllJU/jvyzUM=
-github.com/ktkv419/wallpaper v1.0.0/go.mod h1:FWKGZp57hKy2QGw1GFeln4JRH4we7lfYOo8EQbDFZuQ=
+github.com/ktkv419/wallpaper v1.0.1-0.20250302094050-0fa22fe60e26 h1:7gvwdwhN3yL51Q1XTIwqhvTZ4IWY36FFrboLiyBQuPk=
+github.com/ktkv419/wallpaper v1.0.1-0.20250302094050-0fa22fe60e26/go.mod h1:FWKGZp57hKy2QGw1GFeln4JRH4we7lfYOo8EQbDFZuQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/shirou/gopsutil v3.21.11+incompatible h1:+1+c1VGhc88SSonWP6foOcLhvnKlUeu/erjjvaPEYiI=
