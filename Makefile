@@ -44,6 +44,14 @@ build-windows-debug:
 build-windows:
 	GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS) -H windowsgui" -o $(BINARY_NAME).exe .
 
+build-windows-dev:
+	$(shell taskkill.exe /F /IM hyprhaven.exe > /dev/null 2>&1 || true)	
+
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME).exe .
+	
+	cp $(BINARY_NAME).exe /mnt/c/Users/$(shell cmd.exe /c echo %USERNAME% | tr -d '\r')/
+
+
 build-darwin:
 	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
 
