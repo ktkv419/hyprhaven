@@ -14,7 +14,7 @@ This script fetches wallpapers from [wallhaven.cc](https://wallhaven.cc/) and se
 
 1. Either build or download latest version from release
 
-2. Press <kbd>Ctrl</kbd> + <kbd>R</kbd> and type `shell:startup` to open folder with apps that will launch on user login
+2. Press <kbd>Win</kbd> + <kbd>R</kbd> and type `shell:startup` to open folder with apps that will launch on user login
 
 3. Copy `hyprhaven.exe` to the startup folder
 
