@@ -1,0 +1,45 @@
+version: 2
+
+project_name: hyprhaven
+
+builds:
+  - id: unix
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+  - id: windows
+    goos: [windows]
+    goarch: [amd64]
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    ldflags:
+      - -s -w -H windowsgui -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^chore:'
+      - '^test:'
+
+release:
+  draft: false
+  prerelease: auto
