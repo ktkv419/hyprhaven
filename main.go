@@ -1,378 +1,170 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
-	"net/http"
-	"net/url"
 	"os"
-	"reflect"
-	"regexp"
-	"strconv"
+	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
-
-	"github.com/ktkv419/wallpaper"
-	"github.com/shirou/gopsutil/process"
 )
 
-func TerminateProcess(name string) error {
-	processes, err := process.Processes()
-	currentPid := os.Getpid()
-	if err != nil {
-		return err
-	}
-	for _, p := range processes {
-		n, err := p.Name()
-		if err != nil {
-			return err
-		}
-		if n == name && int(p.Pid) != currentPid {
-			return p.Terminate()
-		}
-	}
-	return fmt.Errorf("process not found")
-}
+// version is injected at release time with -X main.version=<tag>.
+var version = "dev"
 
-type Meta struct {
-	Total   int `json:"total"`
-	Page    int `json:"page"`
-	PerPage int `json:"per_page"`
-}
+var userAgent = "hyprhaven/" + version + " (+https://github.com/ktkv419/hyprhaven)"
 
-// UnmarshalJSON allows us to customize how the `PerPage` field is unmarshalled
-func (m *Meta) UnmarshalJSON(data []byte) error {
-	var temp struct {
-		Total   int         `json:"total"`
-		Page    int         `json:"page"`
-		PerPage interface{} `json:"per_page"`
-	}
-
-	// First, unmarshal into the temporary struct
-	if err := json.Unmarshal(data, &temp); err != nil {
-		return err
-	}
-
-	// Assign values to the Meta struct
-	m.Total = temp.Total
-	m.Page = temp.Page
-
-	// Handle the `perPage` value dynamically
-	switch v := temp.PerPage.(type) {
-	case float64: // If it's a float64 (which is how numbers are unmarshalled in JSON)
-		m.PerPage = int(v)
-	case string:
-		// If it's a string, try to convert it to an integer
-		parsed, err := strconv.Atoi(v)
-		if err != nil {
-			return fmt.Errorf("invalid perPage value: %v", v)
-		}
-		m.PerPage = parsed
-	default:
-		return fmt.Errorf("unsupported perPage type: %T", v)
-	}
-
-	return nil
-}
-
-type Image struct {
-	ID   string `json:"id"`
-	PATH string `json:"path"`
-}
-
-type Response struct {
-	Data []Image `json:"data"`
-	Meta Meta    `json:"meta"`
-}
-
-type SingleWallpaperResponse struct {
-	Data Image `json:"data"`
-}
-
-type RequestParams struct {
-	SORTING    string
-	CATEGORIES string
-	Q          string
-	PURITY     string
-	ATLEAST    string
-	RATIOS     string
-	WH_API     string
-}
-
-type TMALRes struct {
-	Data []struct {
-		Node struct {
-			ID          int    `json:"id"`
-			Title       string `json:"title"`
-			MainPicture struct {
-				Medium string `json:"medium"`
-				Large  string `json:"large"`
-			} `json:"main_picture"`
-		} `json:"node"`
-		ListStatus struct {
-			Status          string    `json:"status"`
-			IsRereading     bool      `json:"is_rereading"`
-			NumVolumesRead  int       `json:"num_volumes_read"`
-			NumChaptersRead int       `json:"num_chapters_read"`
-			Score           int       `json:"score"`
-			UpdatedAt       time.Time `json:"updated_at"`
-			StartDate       string    `json:"start_date"`
-		} `json:"list_status"`
-	} `json:"data"`
-	Paging struct {
-	} `json:"paging"`
-}
-
-func fetchWallpaper(REQUEST_PARAMS RequestParams, PAGE_QUERY int) (string, error) {
-
-	initReqUrl, err := url.Parse("https://wallhaven.cc/api/v1/search")
-
-	initReqParams := url.Values{}
-
-	val := reflect.ValueOf(REQUEST_PARAMS)
-	typ := reflect.TypeOf(REQUEST_PARAMS)
-
-	for i := 0; i < val.NumField(); i++ {
-		initReqParams.Add(strings.ToLower(typ.Field(i).Name), val.Field(i).String())
-	}
-
-	initReqUrl.RawQuery = initReqParams.Encode()
-
-	if err != nil {
-		log.Fatalf("Error decoding JSON request: %v", err)
-	}
-
-	initRes, err := http.Get(initReqUrl.String())
-
-	if err != nil {
-		return "", fmt.Errorf("error making GET request")
-	}
-
-	defer initRes.Body.Close()
-
-	// Check if the response status is OK
-	if initRes.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("error: received status code %d", initRes.StatusCode)
-	}
-
-	// Decode the JSON response
-	var initApiResponse Response
-	err = json.NewDecoder(initRes.Body).Decode(&initApiResponse)
-
-	if err != nil {
-		return "", fmt.Errorf("error decoding JSON response: %v", err)
-	}
-
-	wallpaperPages := initApiResponse.Meta.Total/initApiResponse.Meta.PerPage + 1
-
-	var wallpaperPage int
-	var wallpaperPosition int
-
-	if wallpaperPages < PAGE_QUERY {
-		if initApiResponse.Meta.Total <= initApiResponse.Meta.PerPage {
-			wallpaperPage = 1
-			wallpaperPosition = rand.Intn(initApiResponse.Meta.Total)
-		} else {
-			lastPage := (initApiResponse.Meta.Total + initApiResponse.Meta.PerPage - 1) / initApiResponse.Meta.PerPage
-			wallpaperPage = rand.Intn(lastPage) + 1
-			if wallpaperPage == lastPage {
-				wallpaperPosition = rand.Intn(initApiResponse.Meta.Total % initApiResponse.Meta.PerPage)
-			} else {
-				wallpaperPosition = rand.Intn(initApiResponse.Meta.PerPage)
-			}
-		}
-	} else {
-		//  BUG: on popular requests fetches wrong page
-		wallpaperPage = rand.Intn(PAGE_QUERY) + 1
-		wallpaperPosition = rand.Intn(initApiResponse.Meta.PerPage)
-	}
-
-	wallpaperReqUrl, _ := url.Parse("https://wallhaven.cc/api/v1/search")
-
-	wallpaperReqParams := url.Values{}
-
-	for i := 0; i < val.NumField(); i++ {
-		wallpaperReqParams.Add(strings.ToLower(typ.Field(i).Name), val.Field(i).String())
-	}
-
-	wallpaperReqParams.Add("page", strconv.Itoa(wallpaperPage))
-
-	wallpaperReqUrl.RawQuery = wallpaperReqParams.Encode()
-
-	fmt.Println(wallpaperReqUrl.String())
-
-	wallpaperRes, err := http.Get(wallpaperReqUrl.String())
-
-	if err != nil {
-		log.Fatalf("Error making GET request: %v", err)
-	}
-	defer wallpaperRes.Body.Close()
-
-	// Check if the response status is OK
-	if wallpaperRes.StatusCode != http.StatusOK {
-		log.Fatalf("Error: received status code %d", wallpaperRes.StatusCode)
-	}
-
-	// Decode the JSON response
-	var wallpaperApiResponse Response
-	err = json.NewDecoder(wallpaperRes.Body).Decode(&wallpaperApiResponse)
-
-	if err != nil {
-		log.Fatalf("Error decoding JSON response: %v", err)
-	}
-
-	return wallpaperApiResponse.Data[wallpaperPosition].PATH, nil
-}
-
-func setWallpaper(wallpaperUrl string) {
-	fmt.Printf("wallpaper.Desktop: %v\n", wallpaper.Desktop)
-	fmt.Printf("wallpaper.DesktopSession: %v\n", wallpaper.DesktopSession)
-	// err := wallpaper.SetMode(wallpaper.Crop)
-	// if err != nil {
-	// 	log.Fatalf("Error setting wallpaper: %v", err)
-	//
-	// }
-
-	err := wallpaper.SetFromURL(wallpaperUrl)
-	if err != nil {
-		log.Fatalf("Error setting wallpaper: %v", err)
-	}
-}
-
-// func fetchMALTitles(username string, mal_id string) {
-// 	if mal_id == "" || username == "" {
-// 		log.Panic("No MAL credentials are supplied")
-// 	}
-
-// 	MALReqUrl, _ := url.Parse("https://api.myanimelist.net/v2/users/" + username + "/animelist?fields=list_status&limit=1000")
-
-// 	// Set query parameters
-// 	MALReqParams := url.Values{}
-// 	MALReqParams.Add("fields", "list_status")
-// 	MALReqParams.Add("limit", "1000")
-
-// 	// Encode the query parameters and set it in the URL
-// 	MALReqUrl.RawQuery = MALReqParams.Encode()
-
-// 	// Create a new HTTP GET request
-// 	req, err := http.NewRequest("GET", MALReqUrl.String(), nil)
-// 	if err != nil {
-// 		fmt.Println("Error creating request:", err)
-// 		return
-// 	}
-
-// 	req.Header.Add("x-mal-client-id", mal_id)
-
-// 	client := &http.Client{}
-// 	resp, err := client.Do(req)
-// 	if err != nil {
-// 		fmt.Println("Error making request:", err)
-// 		return
-// 	}
-// 	defer resp.Body.Close()
-
-// 	var MALRes TMALRes
-// 	err = json.NewDecoder(resp.Body).Decode(&MALRes)
-// 	if err != nil {
-// 		log.Fatalf("Error making GET request: %v", err)
-// 	}
-
-// 	// TODO: add parser that returns only "completed" titles
-// 	fmt.Printf("MALRes.Data: %v\n", MALRes.Data[0].Node.Title)
-// }
-
-func getWallpaperById(wallpapersFlag string) (string, error) {
-	wallpaperList := strings.Split(wallpapersFlag, ",")
-	wallpaperID := wallpaperList[rand.Int()%len(wallpaperList)]
-
-	wallpaperReqUrl, _ := url.Parse("https://wallhaven.cc/api/v1/w/" + wallpaperID)
-	wallpaperRes, err := http.Get(wallpaperReqUrl.String())
-
-	if err != nil {
-		log.Fatalf("Error making GET request: %v", err)
-		return "", err
-	}
-	defer wallpaperRes.Body.Close()
-
-	// Check if the response status is OK
-	if wallpaperRes.StatusCode != http.StatusOK {
-		log.Fatalf("Error: received status code %d", wallpaperRes.StatusCode)
-	}
-
-	// Decode the JSON response
-	var wallpaperApiResponse SingleWallpaperResponse
-	err = json.NewDecoder(wallpaperRes.Body).Decode(&wallpaperApiResponse)
-
-	if err != nil {
-		log.Fatalf("Error decoding JSON response: %v", err)
-	}
-
-	return wallpaperApiResponse.Data.PATH, nil
+type options struct {
+	interval   time.Duration
+	pageLimit  int
+	sorting    string
+	categories string
+	query      string
+	purity     string
+	apiKey     string
+	atLeast    string
+	ratios     string
+	ids        string
+	once       bool
 }
 
 func main() {
-	TerminateProcess("hyprhaven.exe")
-	timerFlag := flag.Int("t", 15, "")
-	PAGE_QUERY := flag.Int("pq", 5, "")
+	log.SetPrefix("hyprhaven: ")
+	if err := run(os.Args[1:]); err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
+}
 
-	sortingFlag := flag.String("s", "favorites", "")
-	categoriesFlag := flag.String("c", "111", "")
-	queryFlag := flag.String("q", "", "")
-	purityFlag := flag.String("p", "100", "")
-	atLeastFlag := flag.String("sz", "1920x1080", "")
-	WHAPI := flag.String("wh-key", "", "")
-	ratioFlag := flag.String("r", "landscape", "")
-
-	MALUserFlag := flag.String("mal-user", "", "")
-	MALApiKey := flag.String("mal-key", "", "")
-
-	// Get wallpaper by IDs
-	wallpapersFlag := flag.String("id", "", "")
-
-	flag.Parse()
-
-	unsafeRegex, _ := regexp.Compile(`1$`)
-	if unsafeRegex.MatchString(*purityFlag) && *WHAPI == "" {
-		// Replace the last character with '0'
-		*purityFlag = (*purityFlag)[:len(*purityFlag)-1] + "0"
+func run(args []string) error {
+	opts, err := parseFlags(args)
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
 	}
 
-	REQUEST_PARAMS := RequestParams{
-		SORTING:    *sortingFlag,
-		CATEGORIES: *categoriesFlag,
-		Q:          *queryFlag,
-		PURITY:     *purityFlag,
-		ATLEAST:    *atLeastFlag,
-		WH_API:     *WHAPI,
-		RATIOS:     *ratioFlag,
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if lock, err := acquireInstanceLock(); err != nil {
+		log.Printf("warning: single-instance lock unavailable: %v", err)
+	} else {
+		defer lock.Release()
 	}
 
-	// DEBUG: to bypass unused values
-	var _, _, _, _, _, _ = REQUEST_PARAMS, timerFlag, wallpapersFlag, PAGE_QUERY, MALUserFlag, MALApiKey
-
-	// fetchMALTitles(*MALUserFlag, *MALApiKey)
+	client := newWallhavenClient(newHTTPClient(), opts.apiKey)
+	params := searchParams{
+		Sorting:    opts.sorting,
+		Categories: opts.categories,
+		Query:      opts.query,
+		Purity:     opts.purity,
+		AtLeast:    opts.atLeast,
+		Ratios:     opts.ratios,
+	}
 
 	for {
-		var wallpaperURL string
-		var err error
-
-		if *wallpapersFlag == "" {
-			wallpaperURL, err = fetchWallpaper(REQUEST_PARAMS, *PAGE_QUERY)
-		} else {
-			wallpaperURL, err = getWallpaperById(*wallpapersFlag)
+		err := cycle(ctx, client, params, opts)
+		if ctx.Err() != nil {
+			log.Print("shutting down")
+			return nil
+		}
+		if err != nil {
+			if opts.once {
+				return err
+			}
+			log.Printf("error: %v", err)
+		}
+		if opts.once {
+			return nil
 		}
 
-		if err == nil {
-			fmt.Println(wallpaperURL)
-			setWallpaper(wallpaperURL)
-		} else {
-			fmt.Println("Couldn't fetch wallpaper, please check your internet connection")
+		log.Printf("next wallpaper in %s", opts.interval)
+		select {
+		case <-ctx.Done():
+			log.Print("shutting down")
+			return nil
+		case <-time.After(opts.interval):
 		}
-
-		fmt.Println("Sleeping for " + strconv.Itoa(*timerFlag) + " minutes")
-		time.Sleep(time.Duration(*timerFlag) * time.Minute)
 	}
+}
+
+func cycle(ctx context.Context, client *wallhavenClient, params searchParams, opts options) error {
+	info, err := client.pickWallpaper(ctx, params, opts.pageLimit, opts.ids)
+	if err != nil {
+		return fmt.Errorf("fetch wallpaper: %w", err)
+	}
+	if info.Resolution != "" {
+		log.Printf("selected %s (%s)", info.Path, info.Resolution)
+	} else {
+		log.Printf("selected %s", info.Path)
+	}
+
+	file, err := downloadWallpaper(ctx, client.http, info)
+	if err != nil {
+		return err
+	}
+	if err := applyWallpaper(file); err != nil {
+		return err
+	}
+	cleanupWallpapers(filepath.Dir(file), file)
+	log.Print("wallpaper set")
+	return nil
+}
+
+func parseFlags(args []string) (options, error) {
+	var opts options
+
+	fs := flag.NewFlagSet("hyprhaven", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "Usage: %s [options]\n\nOptions:\n", fs.Name())
+		fs.PrintDefaults()
+	}
+
+	interval := fs.Int("t", 15, "minutes between wallpaper changes")
+	pageLimit := fs.Int("pq", 5, "maximum search page to pick a random wallpaper from")
+	sorting := fs.String("s", "favorites", "sorting: date_added, relevance, random, views, favorites, toplist")
+	categories := fs.String("c", "111", "categories: general, anime, people (e.g. 111)")
+	query := fs.String("q", "", "search query")
+	purity := fs.String("p", "100", "purity: sfw, sketchy, nsfw (e.g. 100, 110, 111)")
+	apiKey := fs.String("apikey", "", "wallhaven API key (required for NSFW and some sorting modes)")
+	atLeast := fs.String("sz", "1920x1080", "minimum resolution (e.g. 1920x1080)")
+	ratios := fs.String("r", "landscape", "ratios: landscape, portrait, or WxH (e.g. 16x9)")
+	ids := fs.String("id", "", "comma-separated wallpaper IDs (e.g. 45p3m5,1p6d79)")
+	once := fs.Bool("once", false, "set one wallpaper and exit")
+
+	if err := fs.Parse(args); err != nil {
+		return options{}, err
+	}
+	if fs.NArg() > 0 {
+		return options{}, fmt.Errorf("unexpected arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *interval < 0 {
+		return options{}, errors.New("-t must not be negative")
+	}
+
+	opts = options{
+		interval:   time.Duration(*interval) * time.Minute,
+		pageLimit:  *pageLimit,
+		sorting:    *sorting,
+		categories: *categories,
+		query:      *query,
+		purity:     sanitizePurity(*purity, *apiKey),
+		apiKey:     *apiKey,
+		atLeast:    *atLeast,
+		ratios:     *ratios,
+		ids:        *ids,
+		once:       *once,
+	}
+	if opts.pageLimit < 1 {
+		opts.pageLimit = 1
+	}
+	return opts, nil
 }

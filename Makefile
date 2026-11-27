@@ -53,5 +53,11 @@ build-windows-dev:
 
 
 build-darwin:
-	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
+	GOOS=darwin GOARCH=$(shell $(GO) env GOARCH) $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
+
+build-darwin-amd64:
+	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME)-darwin-amd64 .
+
+build-darwin-arm64:
+	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME)-darwin-arm64 .
 
