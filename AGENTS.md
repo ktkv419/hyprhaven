@@ -22,6 +22,7 @@ The Go module root is this directory (the one containing `go.mod`). Run all Go c
 | `main.go`                               | Flags, config, signal handling, run loop, `cycle`           |
 | `wallhaven.go`                          | Wallhaven API client, search/ID lookup, pagination, parsing |
 | `wallpaper.go`                          | Download, persistent storage, apply, cleanup, data dirs     |
+| `history.go`                            | Persistent no-repeat wallpaper ID history                   |
 | `instance.go`                           | Cross-platform PID-file single-instance lock                |
 | `wallhaven_test.go`                     | Table-driven unit tests for pure logic                      |
 | `internal/wallpaper/`                   | Platform wallpaper setters; public API is `SetFromFile`     |
@@ -61,13 +62,14 @@ Makefile targets: `build`, `build-darwin` (host arch), `build-darwin-arm64`, `bu
 ## Architecture
 
 1. `main.go` parses flags, creates a `signal.NotifyContext` for `SIGINT`/`SIGTERM`, acquires the PID lock, and loops over `cycle`.
-2. `cycle` asks the client for one `wallpaperInfo`, downloads it with the shared HTTP client, calls `applyWallpaper` (which wraps `wallpaper.SetFromFile`), then removes older downloaded files.
+2. `main.go` loads the no-repeat history, then `cycle` asks the client for one `wallpaperInfo` (skipping recent IDs), downloads it with the shared HTTP client, calls `applyWallpaper` (which wraps `wallpaper.SetFromFile`), removes older downloaded files, and records the ID only after the apply succeeds.
 3. `wallhaven.go`:
-    - Search: fetch page 1 for metadata; use `-page` when set, otherwise choose a random page in `[1, min(meta.last_page, -pq)]`; pick a random item from that page.
-    - IDs: pick a random ID from `-id` and fetch `/w/{id}`.
+    - Search: fetch page 1 for metadata; use `-page` when set, otherwise choose a random page in `[1, min(meta.last_page, -pq)]`; pick a random item from that page that is not in the no-repeat window.
+    - IDs: pick a random ID from `-id` that is not in the no-repeat window and fetch `/w/{id}`.
     - All search API parameters are exposed as flags and validated by `normalize*` helpers (`q`, `categories`, `purity`, `sorting`, `order`, `topRange`, `atleast`, `resolutions`, `ratios`, `colors`, `page`, `seed`, `apikey`).
 4. `wallpaper.go` owns the HTTP download (2-minute timeout, 100 MiB cap), atomic storage, persistent data directory, and cleanup.
-5. `instance.go` writes `<dataDir>/hyprhaven.pid`; on startup it kills the previous PID if it is still alive.
+5. `history.go` keeps the last N applied wallpaper IDs in `<dataDir>/history.json`, loaded at startup and saved atomically after each successful apply.
+6. `instance.go` writes `<dataDir>/hyprhaven.pid`; on startup it kills the previous PID if it is still alive.
 
 ## Rules
 
@@ -110,6 +112,7 @@ Defaults and help text live in `parseFlags` (`main.go`) and the README. Keep the
 | `-t`      | `15`        | Minutes between changes                   |
 | `-pq`     | `5`         | Maximum random search page                |
 | `-page`   | `0`         | Exact search page, `0` = random           |
+| `-norepeat` | `5`       | Recent wallpaper IDs to skip, `0` = off   |
 | `-s`      | `favorites` | Sorting                                   |
 | `-o`      | `desc`      | Sorting order                             |
 | `-tr`     | `1M`        | Toplist range (with `-s toplist`)         |
@@ -128,6 +131,7 @@ Defaults and help text live in `parseFlags` (`main.go`) and the README. Keep the
 ## Data and state
 
 - Wallpapers: `<dataDir>/wallpapers/wallhaven-<id>-<unixnano>.<ext>`
+- History: `<dataDir>/history.json` (`{"ids":["..."]}`, newest last)
 - PID file: `<dataDir>/hyprhaven.pid`
 - `<dataDir>`:
     - macOS: `~/Library/Application Support/hyprhaven`
@@ -145,6 +149,9 @@ Defaults and help text live in `parseFlags` (`main.go`) and the README. Keep the
 - `searchParams.values` only sends `topRange` for `-s toplist` and `seed` for `-s random`. Random sorting returns `meta.seed` on page 1, which `pickRandom` reuses on the chosen page so the shuffle is stable.
 - Validate search filters through the `normalize*` helpers before requesting. The API silently ignores bad `purity`/`sorting`/`order` values, returns a 500 for malformed `categories`, and only accepts the documented color palette.
 - The API ignores `resolutions` when `atleast` is also sent, so `searchParams.values` sends one or the other and `-res` takes precedence over `-sz`.
+- Record a wallpaper ID in the history only after `SetFromFile` succeeds; a failed download or apply must not consume a window slot.
+- History is a rolling window: `trimIDs` keeps the newest N unique IDs, and `-norepeat 0` disables both reading and writing. A corrupt `history.json` returns an error with an empty tracker so the daemon warns and continues.
+- `pickRandom` checks up to `maxPageAttempts` pages for an unused ID. If the whole pool is inside the window (e.g. an `-id` list smaller than `-norepeat`), it returns `errAllUsed` rather than repeating.
 - Downloads use unique filenames so a failed rename cannot delete the currently displayed wallpaper.
 - Run `cleanupWallpapers` only after `SetFromFile` succeeds.
 - The PID lock uses `os.Process.Kill`; do not replace it with a process-name scan.

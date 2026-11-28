@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -186,7 +188,7 @@ func TestNormalizeSeed(t *testing.T) {
 
 func TestParseFlags(t *testing.T) {
 	opts, err := parseFlags([]string{
-		"-t", "5", "-pq", "3", "-page", "7",
+		"-t", "5", "-pq", "3", "-page", "7", "-norepeat", "2",
 		"-s", "toplist", "-o", "asc", "-tr", "3m",
 		"-c", "general,anime", "-p", "sfw,sketchy",
 		"-sz", "2560:1440", "-res", "1920x1080, 2560x1440",
@@ -196,7 +198,7 @@ func TestParseFlags(t *testing.T) {
 		t.Fatalf("parseFlags error: %v", err)
 	}
 	want := options{
-		interval: 5 * time.Minute, pageLimit: 3, page: 7,
+		interval: 5 * time.Minute, pageLimit: 3, page: 7, noRepeat: 2,
 		sorting: "toplist", order: "asc", topRange: "3M",
 		categories: "110", query: "cats", purity: "110",
 		atLeast: "2560x1440", resolutions: "1920x1080,2560x1440",
@@ -235,11 +237,196 @@ func TestParseFlags(t *testing.T) {
 		{"-seed", "abc123"},
 		{"-seed", "abc"},
 		{"-page", "-1"},
+		{"-norepeat", "-1"},
 		{"-t", "-1"},
 		{"positional"},
 	} {
 		if _, err := parseFlags(args); err == nil {
 			t.Errorf("parseFlags(%v) expected an error", args)
+		}
+	}
+}
+
+func TestTrimIDs(t *testing.T) {
+	tests := []struct {
+		name string
+		ids  []string
+		max  int
+		want []string
+	}{
+		{"empty", nil, 3, nil},
+		{"short", []string{"a", "b"}, 3, []string{"a", "b"}},
+		{"trim", []string{"a", "b", "c", "d"}, 2, []string{"c", "d"}},
+		{"dedupe", []string{"a", "b", "a", "c"}, 4, []string{"b", "a", "c"}},
+		{"dedupe after trim", []string{"a", "a", "b", "c"}, 2, []string{"b", "c"}},
+		{"zero max", []string{"a"}, 0, nil},
+		{"skip empty", []string{"a", "", "b"}, 3, []string{"a", "b"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := trimIDs(tt.ids, tt.max)
+			if len(got) != len(tt.want) {
+				t.Fatalf("trimIDs(%v, %d) = %v, want %v", tt.ids, tt.max, got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Fatalf("trimIDs(%v, %d) = %v, want %v", tt.ids, tt.max, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestUsedWallpapers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+
+	used, err := loadUsedWallpapers(path, 3)
+	if err != nil {
+		t.Fatalf("load missing history: %v", err)
+	}
+	if !used.enabled() {
+		t.Fatal("history should be enabled")
+	}
+	if used.contains("a") {
+		t.Fatal("empty history should not contain a")
+	}
+
+	for _, id := range []string{"a", "b", "c", "d"} {
+		if err := used.add(id); err != nil {
+			t.Fatalf("add %q: %v", id, err)
+		}
+	}
+	for _, id := range []string{"b", "c", "d"} {
+		if !used.contains(id) {
+			t.Errorf("history should contain %q", id)
+		}
+	}
+	if used.contains("a") {
+		t.Error("history should have dropped a")
+	}
+	if got := used.ids; len(got) != 3 || got[0] != "b" || got[2] != "d" {
+		t.Errorf("window = %v, want [b c d]", got)
+	}
+
+	reloaded, err := loadUsedWallpapers(path, 3)
+	if err != nil {
+		t.Fatalf("reload history: %v", err)
+	}
+	if !reloaded.contains("d") || reloaded.contains("a") {
+		t.Errorf("reloaded window = %v, want [b c d]", reloaded.ids)
+	}
+
+	shrunk, err := loadUsedWallpapers(path, 2)
+	if err != nil {
+		t.Fatalf("reload with smaller window: %v", err)
+	}
+	if shrunk.contains("b") || !shrunk.contains("c") || !shrunk.contains("d") {
+		t.Errorf("shrunk window = %v, want [c d]", shrunk.ids)
+	}
+
+	// Re-adding a repeated ID should refresh its position, not duplicate it.
+	repeated, err := loadUsedWallpapers(filepath.Join(t.TempDir(), "repeat.json"), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"a", "b", "a"} {
+		if err := repeated.add(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := repeated.ids; len(got) != 2 || got[0] != "b" || got[1] != "a" {
+		t.Errorf("repeated window = %v, want [b a]", got)
+	}
+}
+
+func TestUsedWallpapersDisabled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	used, err := loadUsedWallpapers(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used.enabled() {
+		t.Fatal("window 0 should be disabled")
+	}
+	if err := used.add("a"); err != nil {
+		t.Fatal(err)
+	}
+	if used.contains("a") {
+		t.Error("disabled history should not track IDs")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("disabled history should not create a file, stat err = %v", err)
+	}
+}
+
+func TestUsedWallpapersCorruptFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	used, err := loadUsedWallpapers(path, 5)
+	if err == nil {
+		t.Fatal("corrupt history should return an error")
+	}
+	if used == nil || !used.enabled() || len(used.ids) != 0 {
+		t.Fatalf("corrupt history should fall back to an empty tracker, got %+v", used)
+	}
+
+	// The next successful add repairs the file.
+	if err := used.add("fixed"); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := loadUsedWallpapers(path, 5)
+	if err != nil {
+		t.Fatalf("repaired history: %v", err)
+	}
+	if !reloaded.contains("fixed") {
+		t.Error("repaired history should contain the new ID")
+	}
+}
+
+func TestUnusedFilters(t *testing.T) {
+	items := []wallpaperInfo{{ID: "a"}, {ID: "b"}, {ID: "c"}}
+	skip := func(id string) bool { return id == "b" }
+
+	got := unusedWallpapers(items, skip)
+	if len(got) != 2 || got[0].ID != "a" || got[1].ID != "c" {
+		t.Errorf("unusedWallpapers = %v, want [a c]", got)
+	}
+	if all := unusedWallpapers(items, nil); len(all) != 3 {
+		t.Errorf("nil skip should keep every item, got %v", all)
+	}
+
+	ids := unusedIDs([]string{"a", "b", "c"}, skip)
+	if len(ids) != 2 || ids[0] != "a" || ids[1] != "c" {
+		t.Errorf("unusedIDs = %v, want [a c]", ids)
+	}
+	if all := unusedIDs([]string{"a", "b"}, nil); len(all) != 2 {
+		t.Errorf("nil skip should keep every ID, got %v", all)
+	}
+}
+
+func TestUnusedPage(t *testing.T) {
+	if got := unusedPage(0, nil); got != 0 {
+		t.Errorf("unusedPage(0) = %d, want 0", got)
+	}
+	if got := unusedPage(1, map[int]struct{}{1: {}}); got != 0 {
+		t.Errorf("unusedPage with every page tried = %d, want 0", got)
+	}
+
+	free := 5
+	tried := map[int]struct{}{1: {}, 2: {}, 3: {}, 4: {}}
+	for i := 0; i < 100; i++ {
+		if got := unusedPage(5, tried); got != free {
+			t.Fatalf("unusedPage should return the only free page %d, got %d", free, got)
+		}
+	}
+
+	for i := 0; i < 100; i++ {
+		got := unusedPage(10, map[int]struct{}{})
+		if got < 1 || got > 10 {
+			t.Fatalf("unusedPage returned %d, want 1..10", got)
 		}
 	}
 }

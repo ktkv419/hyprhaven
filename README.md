@@ -63,6 +63,7 @@ The script can be customized using the following command-line flags:
 | `-t`       | `int`    | `15`          | The time interval (in minutes) to wait before setting the wallpaper.                                                 |
 | `-pq`      | `int`    | `5`           | The maximum search page to randomly pick a wallpaper from.                                                           |
 | `-page`    | `int`    | `0`           | Use one exact search page instead of a random one. `0` keeps the random behavior.                                    |
+| `-norepeat` | `int`    | `5`           | Remember the last N wallpaper IDs and skip them. `0` disables the history.                                           |
 | `-s`       | `string` | `favorites`   | Sorting: `date_added`, `relevance`, `random`, `views`, `favorites`, `toplist`.                                       |
 | `-o`       | `string` | `desc`        | Sorting order: `desc` or `asc`.                                                                                      |
 | `-tr`      | `string` | `1M`          | Toplist time range, used with `-s toplist`: `1d`, `3d`, `1w`, `1M`, `3M`, `6M`, `1y`.                                |
@@ -82,6 +83,8 @@ All possible values can be referenced from [wallhaven API](https://wallhaven.cc/
 
 `-res` replaces `-sz`: the API ignores exact resolutions when a minimum resolution is sent in the same request.
 
+Recent wallpaper IDs are stored in `<dataDir>/history.json`, so `-norepeat` survives restarts. With the default `-norepeat 5`, every new wallpaper differs from the five most recent ones. If the search pool itself is smaller than the window (for example a two-ID `-id` list with `-norepeat 2`), hyprhaven reports an error instead of repeating a wallpaper.
+
 When `-s random` is used, the seed returned by the first page is reused for the picked page, so the shuffle stays consistent. Without `-apikey`, NSFW purity is automatically disabled.
 
 Downloaded wallpapers are kept in a persistent per-user directory:
@@ -90,4 +93,4 @@ Downloaded wallpapers are kept in a persistent per-user directory:
 - Windows: `%LocalAppData%\hyprhaven\wallpapers`
 - Linux: `$XDG_DATA_HOME/hyprhaven/wallpapers` (default `~/.local/share/hyprhaven/wallpapers`)
 
-Set `HYPRHAVEN_DATA_DIR` to override it.
+Set `HYPRHAVEN_DATA_DIR` to override it. The no-repeat history lives next to the wallpapers, at `<dataDir>/history.json`.

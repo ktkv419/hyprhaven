@@ -23,6 +23,7 @@ type options struct {
 	interval    time.Duration
 	pageLimit   int
 	page        int
+	noRepeat    int
 	sorting     string
 	order       string
 	topRange    string
@@ -80,8 +81,21 @@ func run(args []string) error {
 		Seed:        opts.seed,
 	}
 
+	historyPath := ""
+	if opts.noRepeat > 0 {
+		if dir, err := dataDir(); err != nil {
+			log.Printf("warning: wallpaper history will not persist: %v", err)
+		} else {
+			historyPath = filepath.Join(dir, "history.json")
+		}
+	}
+	used, err := loadUsedWallpapers(historyPath, opts.noRepeat)
+	if err != nil {
+		log.Printf("warning: %v; starting with an empty history", err)
+	}
+
 	for {
-		err := cycle(ctx, client, params, opts)
+		err := cycle(ctx, client, params, opts, used)
 		if ctx.Err() != nil {
 			log.Print("shutting down")
 			return nil
@@ -106,8 +120,8 @@ func run(args []string) error {
 	}
 }
 
-func cycle(ctx context.Context, client *wallhavenClient, params searchParams, opts options) error {
-	info, err := client.pickWallpaper(ctx, params, opts.pageLimit, opts.page, opts.ids)
+func cycle(ctx context.Context, client *wallhavenClient, params searchParams, opts options, used *usedWallpapers) error {
+	info, err := client.pickWallpaper(ctx, params, opts.pageLimit, opts.page, opts.ids, used.contains)
 	if err != nil {
 		return fmt.Errorf("fetch wallpaper: %w", err)
 	}
@@ -126,6 +140,9 @@ func cycle(ctx context.Context, client *wallhavenClient, params searchParams, op
 	}
 	cleanupWallpapers(filepath.Dir(file), file)
 	log.Print("wallpaper set")
+	if err := used.add(info.ID); err != nil {
+		log.Printf("warning: save wallpaper history: %v", err)
+	}
 	return nil
 }
 
@@ -142,6 +159,7 @@ func parseFlags(args []string) (options, error) {
 	interval := fs.Int("t", 15, "minutes between wallpaper changes")
 	pageLimit := fs.Int("pq", 5, "maximum search page to pick a random wallpaper from")
 	page := fs.Int("page", 0, "exact search page to use (0 picks a random page up to -pq)")
+	noRepeat := fs.Int("norepeat", 5, "remember the last N wallpaper IDs and skip them (0 disables)")
 	sorting := fs.String("s", "favorites", "sorting: date_added, relevance, random, views, favorites, toplist")
 	order := fs.String("o", "desc", "sorting order: desc, asc")
 	topRange := fs.String("tr", "1M", "toplist time range when -s toplist: 1d, 3d, 1w, 1M, 3M, 6M, 1y")
@@ -168,6 +186,9 @@ func parseFlags(args []string) (options, error) {
 	}
 	if *page < 0 {
 		return options{}, errors.New("-page must not be negative")
+	}
+	if *noRepeat < 0 {
+		return options{}, errors.New("-norepeat must not be negative")
 	}
 
 	sortingValue, err := normalizeSorting(*sorting)
@@ -228,6 +249,7 @@ func parseFlags(args []string) (options, error) {
 		interval:    time.Duration(*interval) * time.Minute,
 		pageLimit:   *pageLimit,
 		page:        *page,
+		noRepeat:    *noRepeat,
 		sorting:     sortingValue,
 		order:       orderValue,
 		topRange:    topRangeValue,

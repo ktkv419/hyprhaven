@@ -16,7 +16,14 @@ import (
 
 const wallhavenAPI = "https://wallhaven.cc/api/v1"
 
-var errNoWallpapers = errors.New("no wallpapers matched the search")
+var (
+	errNoWallpapers = errors.New("no wallpapers matched the search")
+	errAllUsed      = errors.New("all matching wallpapers are in the no-repeat history")
+)
+
+// maxPageAttempts bounds how many result pages are fetched while looking for a
+// wallpaper that is not in the recent-history window.
+const maxPageAttempts = 5
 
 type searchParams struct {
 	Sorting     string
@@ -96,29 +103,34 @@ func newWallhavenClient(client *http.Client, apiKey string) *wallhavenClient {
 }
 
 // pickWallpaper returns one wallpaper, either from an explicit ID list, an
-// explicit search page, or a randomized page of a search.
-func (c *wallhavenClient) pickWallpaper(ctx context.Context, p searchParams, pageLimit, page int, ids string) (wallpaperInfo, error) {
+// explicit search page, or a randomized page of a search. skip, when non-nil,
+// excludes wallpaper IDs that should not be reused.
+func (c *wallhavenClient) pickWallpaper(ctx context.Context, p searchParams, pageLimit, page int, ids string, skip func(string) bool) (wallpaperInfo, error) {
 	if strings.TrimSpace(ids) != "" {
-		return c.pickByIDs(ctx, ids)
+		return c.pickByIDs(ctx, ids, skip)
 	}
 	if page > 0 {
-		return c.pickPage(ctx, p, page)
+		return c.pickPage(ctx, p, page, skip)
 	}
-	return c.pickRandom(ctx, p, pageLimit)
+	return c.pickRandom(ctx, p, pageLimit, skip)
 }
 
-func (c *wallhavenClient) pickPage(ctx context.Context, p searchParams, page int) (wallpaperInfo, error) {
+func (c *wallhavenClient) pickPage(ctx context.Context, p searchParams, page int, skip func(string) bool) (wallpaperInfo, error) {
 	resp, err := c.search(ctx, p, page)
 	if err != nil {
 		return wallpaperInfo{}, err
 	}
-	if len(resp.Data) == 0 {
-		return wallpaperInfo{}, fmt.Errorf("%w (page %d)", errNoWallpapers, page)
+	items := unusedWallpapers(resp.Data, skip)
+	if len(items) == 0 {
+		if len(resp.Data) == 0 {
+			return wallpaperInfo{}, fmt.Errorf("%w (page %d)", errNoWallpapers, page)
+		}
+		return wallpaperInfo{}, fmt.Errorf("%w (page %d)", errAllUsed, page)
 	}
-	return resp.Data[rand.IntN(len(resp.Data))], nil
+	return items[rand.IntN(len(items))], nil
 }
 
-func (c *wallhavenClient) pickRandom(ctx context.Context, p searchParams, pageLimit int) (wallpaperInfo, error) {
+func (c *wallhavenClient) pickRandom(ctx context.Context, p searchParams, pageLimit int, skip func(string) bool) (wallpaperInfo, error) {
 	first, err := c.search(ctx, p, 1)
 	if err != nil {
 		return wallpaperInfo{}, err
@@ -133,31 +145,95 @@ func (c *wallhavenClient) pickRandom(ctx context.Context, p searchParams, pageLi
 		p.Seed = first.Meta.Seed
 	}
 
-	page := 1
-	if last := maxPage(int(first.Meta.LastPage), pageLimit); last > 1 {
-		page = rand.IntN(last) + 1
-	}
-
-	items := first.Data
-	if page > 1 {
-		resp, err := c.search(ctx, p, page)
-		if err != nil {
-			return wallpaperInfo{}, err
+	last := maxPage(int(first.Meta.LastPage), pageLimit)
+	tried := make(map[int]struct{}, maxPageAttempts)
+	seen := false
+	for attempt := 0; attempt < maxPageAttempts; attempt++ {
+		page := unusedPage(last, tried)
+		if page == 0 {
+			break
 		}
-		items = resp.Data
+		tried[page] = struct{}{}
+
+		items := first.Data
+		if page > 1 {
+			resp, err := c.search(ctx, p, page)
+			if err != nil {
+				return wallpaperInfo{}, err
+			}
+			items = resp.Data
+		}
+		if len(items) > 0 {
+			seen = true
+		}
+
+		if items = unusedWallpapers(items, skip); len(items) > 0 {
+			return items[rand.IntN(len(items))], nil
+		}
 	}
-	if len(items) == 0 {
+	if !seen {
 		return wallpaperInfo{}, errNoWallpapers
 	}
-	return items[rand.IntN(len(items))], nil
+	return wallpaperInfo{}, fmt.Errorf("%w (checked %d page(s))", errAllUsed, len(tried))
 }
 
-func (c *wallhavenClient) pickByIDs(ctx context.Context, raw string) (wallpaperInfo, error) {
+// unusedPage returns a random page in [1, last] that is not in tried. It falls
+// back to a linear scan when random picks collide, and returns 0 when every
+// page has been tried.
+func unusedPage(last int, tried map[int]struct{}) int {
+	if last < 1 {
+		return 0
+	}
+	for i := 0; i < 8; i++ {
+		page := rand.IntN(last) + 1
+		if _, ok := tried[page]; !ok {
+			return page
+		}
+	}
+	for page := 1; page <= last; page++ {
+		if _, ok := tried[page]; !ok {
+			return page
+		}
+	}
+	return 0
+}
+
+func (c *wallhavenClient) pickByIDs(ctx context.Context, raw string, skip func(string) bool) (wallpaperInfo, error) {
 	ids := parseIDs(raw)
 	if len(ids) == 0 {
 		return wallpaperInfo{}, errors.New("no wallpaper IDs provided")
 	}
+	ids = unusedIDs(ids, skip)
+	if len(ids) == 0 {
+		return wallpaperInfo{}, fmt.Errorf("%w (every ID from -id)", errAllUsed)
+	}
 	return c.wallpaper(ctx, ids[rand.IntN(len(ids))])
+}
+
+func unusedWallpapers(items []wallpaperInfo, skip func(string) bool) []wallpaperInfo {
+	if skip == nil {
+		return items
+	}
+	out := make([]wallpaperInfo, 0, len(items))
+	for _, item := range items {
+		if !skip(item.ID) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func unusedIDs(ids []string, skip func(string) bool) []string {
+	if skip == nil {
+		return ids
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !skip(id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func (c *wallhavenClient) search(ctx context.Context, p searchParams, page int) (searchResponse, error) {
