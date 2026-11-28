@@ -19,12 +19,17 @@ const wallhavenAPI = "https://wallhaven.cc/api/v1"
 var errNoWallpapers = errors.New("no wallpapers matched the search")
 
 type searchParams struct {
-	Sorting    string
-	Categories string
-	Query      string
-	Purity     string
-	AtLeast    string
-	Ratios     string
+	Sorting     string
+	Order       string
+	TopRange    string
+	Categories  string
+	Query       string
+	Purity      string
+	AtLeast     string
+	Resolutions string
+	Ratios      string
+	Colors      string
+	Seed        string
 }
 
 func (p searchParams) values() url.Values {
@@ -35,11 +40,25 @@ func (p searchParams) values() url.Values {
 		}
 	}
 	set("sorting", p.Sorting)
+	set("order", p.Order)
+	if p.Sorting == "toplist" {
+		set("topRange", p.TopRange)
+	}
 	set("categories", p.Categories)
 	set("q", p.Query)
 	set("purity", p.Purity)
-	set("atleast", p.AtLeast)
+	// wallhaven ignores resolutions when atleast is also present, so an exact
+	// resolution list takes precedence over the minimum resolution.
+	if p.Resolutions != "" {
+		set("resolutions", p.Resolutions)
+	} else {
+		set("atleast", p.AtLeast)
+	}
 	set("ratios", p.Ratios)
+	set("colors", p.Colors)
+	if p.Sorting == "random" {
+		set("seed", p.Seed)
+	}
 	return v
 }
 
@@ -55,6 +74,7 @@ type searchMeta struct {
 	LastPage    flexInt `json:"last_page"`
 	PerPage     flexInt `json:"per_page"`
 	Total       flexInt `json:"total"`
+	Seed        string  `json:"seed"`
 }
 
 type searchResponse struct {
@@ -75,13 +95,27 @@ func newWallhavenClient(client *http.Client, apiKey string) *wallhavenClient {
 	return &wallhavenClient{http: client, apiKey: apiKey}
 }
 
-// pickWallpaper returns one wallpaper, either from an explicit ID list or from
-// a randomized page of a search.
-func (c *wallhavenClient) pickWallpaper(ctx context.Context, p searchParams, pageLimit int, ids string) (wallpaperInfo, error) {
+// pickWallpaper returns one wallpaper, either from an explicit ID list, an
+// explicit search page, or a randomized page of a search.
+func (c *wallhavenClient) pickWallpaper(ctx context.Context, p searchParams, pageLimit, page int, ids string) (wallpaperInfo, error) {
 	if strings.TrimSpace(ids) != "" {
 		return c.pickByIDs(ctx, ids)
 	}
+	if page > 0 {
+		return c.pickPage(ctx, p, page)
+	}
 	return c.pickRandom(ctx, p, pageLimit)
+}
+
+func (c *wallhavenClient) pickPage(ctx context.Context, p searchParams, page int) (wallpaperInfo, error) {
+	resp, err := c.search(ctx, p, page)
+	if err != nil {
+		return wallpaperInfo{}, err
+	}
+	if len(resp.Data) == 0 {
+		return wallpaperInfo{}, fmt.Errorf("%w (page %d)", errNoWallpapers, page)
+	}
+	return resp.Data[rand.IntN(len(resp.Data))], nil
 }
 
 func (c *wallhavenClient) pickRandom(ctx context.Context, p searchParams, pageLimit int) (wallpaperInfo, error) {
@@ -91,6 +125,12 @@ func (c *wallhavenClient) pickRandom(ctx context.Context, p searchParams, pageLi
 	}
 	if len(first.Data) == 0 {
 		return wallpaperInfo{}, errNoWallpapers
+	}
+
+	// Random sorting returns a seed that must be reused on later pages so the
+	// shuffle stays stable; without it each page is a different ordering.
+	if p.Sorting == "random" && p.Seed == "" {
+		p.Seed = first.Meta.Seed
 	}
 
 	page := 1
@@ -211,12 +251,194 @@ func parseIDs(raw string) []string {
 }
 
 // sanitizePurity disables NSFW results when no API key is supplied, mirroring
-// the wallhaven API rule.
+// the wallhaven API rule. The purity string is a three-bit mask where the last
+// bit is NSFW.
 func sanitizePurity(purity, apiKey string) string {
-	if apiKey == "" && strings.HasSuffix(purity, "1") {
-		return purity[:len(purity)-1] + "0"
+	if apiKey == "" && len(purity) == 3 && purity[2] == '1' {
+		return purity[:2] + "0"
 	}
 	return purity
+}
+
+// The values below mirror the wallhaven search API. Anything not listed here is
+// silently ignored by the server (or, for categories, returns a 500), so the
+// client validates up front instead of producing mysterious empty results.
+var (
+	sortingNames  = []string{"date_added", "relevance", "random", "views", "favorites", "toplist"}
+	orderNames    = []string{"desc", "asc"}
+	topRangeNames = []string{"1d", "3d", "1w", "1M", "3M", "6M", "1y"}
+	purityNames   = []string{"sfw", "sketchy", "nsfw"}
+	categoryNames = []string{"general", "anime", "people"}
+
+	// colorPalette is the only set of colors the wallhaven search accepts.
+	colorPalette = []string{
+		"660000", "990000", "cc0000", "cc3333", "ea4c88", "993399",
+		"663399", "333399", "0066cc", "0099cc", "66cccc", "77cc33",
+		"669900", "336600", "666600", "999900", "cccc33", "ffff00",
+		"ffcc33", "ff9900", "ff6600", "cc6633", "996633", "663300",
+		"000000", "999999", "cccccc", "ffffff", "424153",
+	}
+)
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeBits turns a three-digit mask such as "111" or a comma-separated
+// list of names such as "sfw,sketchy" into the three-digit mask.
+func normalizeBits(raw string, names []string) (string, error) {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	if s == "" {
+		return "", nil
+	}
+
+	compact := strings.NewReplacer(" ", "", "\t", "", ",", "", "_", "", "-", "").Replace(s)
+	if len(compact) == 3 && strings.Trim(compact, "01") == "" {
+		return compact, nil
+	}
+
+	var on [3]bool
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		idx := -1
+		for i, name := range names {
+			if part == name {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return "", fmt.Errorf("invalid value %q: use a three-digit mask or %s", raw, strings.Join(names, ", "))
+		}
+		on[idx] = true
+	}
+
+	var b strings.Builder
+	for _, enabled := range on {
+		if enabled {
+			b.WriteByte('1')
+		} else {
+			b.WriteByte('0')
+		}
+	}
+	return b.String(), nil
+}
+
+func normalizeSorting(raw string) (string, error) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	s = strings.NewReplacer(" ", "_", "-", "_").Replace(s)
+	if !contains(sortingNames, s) {
+		return "", fmt.Errorf("invalid sorting %q: use %s", raw, strings.Join(sortingNames, ", "))
+	}
+	return s, nil
+}
+
+func normalizeOrder(raw string) (string, error) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if !contains(orderNames, s) {
+		return "", fmt.Errorf("invalid order %q: use %s", raw, strings.Join(orderNames, ", "))
+	}
+	return s, nil
+}
+
+func normalizeTopRange(raw string) (string, error) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	for _, name := range topRangeNames {
+		if strings.ToLower(name) == s {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("invalid top range %q: use one of %s", raw, strings.Join(topRangeNames, ", "))
+}
+
+// normalizeDimensions validates a WxH value and normalizes common separators.
+func normalizeDimensions(raw string) (string, error) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	s = strings.NewReplacer("×", "x", ":", "x", " ", "").Replace(s)
+	parts := strings.Split(s, "x")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid dimensions %q: use WIDTHxHEIGHT (e.g. 1920x1080)", raw)
+	}
+	for _, part := range parts {
+		if part == "" || strings.Trim(part, "0123456789") != "" {
+			return "", fmt.Errorf("invalid dimensions %q: use WIDTHxHEIGHT (e.g. 1920x1080)", raw)
+		}
+	}
+	return parts[0] + "x" + parts[1], nil
+}
+
+func normalizeResolutions(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		value, err := normalizeDimensions(part)
+		if err != nil {
+			return "", err
+		}
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return "", nil
+	}
+	return strings.Join(out, ","), nil
+}
+
+func normalizeRatios(raw string) (string, error) {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	if s == "" {
+		return "", nil
+	}
+	if contains([]string{"landscape", "portrait", "all"}, s) {
+		return s, nil
+	}
+	return normalizeResolutions(s)
+}
+
+func normalizeColors(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		color := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(part)), "#")
+		if color == "" {
+			continue
+		}
+		if !contains(colorPalette, color) {
+			return "", fmt.Errorf("unsupported color %q: use a hex value from %s", part, strings.Join(colorPalette, ", "))
+		}
+		out = append(out, color)
+	}
+	if len(out) == 0 {
+		return "", nil
+	}
+	return strings.Join(out, ","), nil
+}
+
+func normalizeSeed(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", nil
+	}
+	if len(s) != 6 || strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") != "" {
+		return "", fmt.Errorf("invalid seed %q: use six letters or digits", raw)
+	}
+	return s, nil
 }
 
 // flexInt accepts both JSON numbers and numeric strings. Some wallhaven

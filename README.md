@@ -62,19 +62,27 @@ The script can be customized using the following command-line flags:
 | ---------- | -------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `-t`       | `int`    | `15`          | The time interval (in minutes) to wait before setting the wallpaper.                                                 |
 | `-pq`      | `int`    | `5`           | The maximum search page to randomly pick a wallpaper from.                                                           |
-| `-s`       | `string` | `favorites`   | The sorting criterion for the wallpapers.                                                                            |
-| `-c`       | `string` | `111`         | The category IDs to filter wallpapers.                                                                               |
-| `-q`       | `string` | `""`          | The search query for wallpaper search.                                                                               |
-| `-p`       | `string` | `100`         | The purity level of the wallpapers.                                                                                  |
+| `-page`    | `int`    | `0`           | Use one exact search page instead of a random one. `0` keeps the random behavior.                                    |
+| `-s`       | `string` | `favorites`   | Sorting: `date_added`, `relevance`, `random`, `views`, `favorites`, `toplist`.                                       |
+| `-o`       | `string` | `desc`        | Sorting order: `desc` or `asc`.                                                                                      |
+| `-tr`      | `string` | `1M`          | Toplist time range, used with `-s toplist`: `1d`, `3d`, `1w`, `1M`, `3M`, `6M`, `1y`.                                |
+| `-c`       | `string` | `111`         | Categories as a three-digit mask (`general`, `anime`, `people`) or names, e.g. `101` or `general,people`.             |
+| `-q`       | `string` | `""`          | Search query. Supports the full wallhaven syntax (`+tag`, `-tag`, `@user`, `id:123`, `like:<id>`, ...).               |
+| `-p`       | `string` | `100`         | Purity as a three-digit mask (`sfw`, `sketchy`, `nsfw`) or names, e.g. `110` or `sfw,sketchy`.                       |
 | `-apikey`  | `string` | `""`          | API key to make user specific/NSFW requests.                                                                         |
 | `-sz`      | `string` | `1920x1080`   | The minimum resolution for the wallpaper.                                                                            |
-| `-r`       | `string` | `landscape`   | The ratio for the wallpaper (accepts values like `21x9` as well as `portrait` or `landscape` for tall/wide pictures) |
-| `-id`      | `string` | `""`          | IDs list to select wallpaper from (like `"45p3m5,1p6d79"`)                                                           |
+| `-res`     | `string` | `""`          | Exact resolutions to allow, comma-separated (e.g. `1920x1080,2560x1440`). Overrides `-sz`.                              |
+| `-r`       | `string` | `landscape`   | The ratio filter: `landscape`, `portrait`, `all`, or one/more `WxH` values (e.g. `16x9` or `16x9,9x16`).             |
+| `-color`   | `string` | `""`          | Color filter, comma-separated hex values from the wallhaven palette (e.g. `990000,000000`).                          |
+| `-seed`    | `string` | `""`          | Random seed for `-s random` (six letters or digits) to reproduce a shuffle.                                          |
+| `-id`      | `string` | `""`          | IDs list to select wallpaper from (like `"45p3m5,1p6d79"`).                                                          |
 | `-once`    | `bool`   | `false`       | Set one wallpaper and exit. Useful for testing.                                                                      |
 
-All possible values can be referenced from [wallhaven API](https://wallhaven.cc/help/api).
+All possible values can be referenced from [wallhaven API](https://wallhaven.cc/help/api). Filter values are validated before any request, so a typo fails fast instead of returning an empty search. Only the documented wallhaven color palette is accepted.
 
-Without `-apikey`, NSFW purity is automatically disabled.
+`-res` replaces `-sz`: the API ignores exact resolutions when a minimum resolution is sent in the same request.
+
+When `-s random` is used, the seed returned by the first page is reused for the picked page, so the shuffle stays consistent. Without `-apikey`, NSFW purity is automatically disabled.
 
 Downloaded wallpapers are kept in a persistent per-user directory:
 

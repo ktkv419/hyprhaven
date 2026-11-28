@@ -63,8 +63,9 @@ Makefile targets: `build`, `build-darwin` (host arch), `build-darwin-arm64`, `bu
 1. `main.go` parses flags, creates a `signal.NotifyContext` for `SIGINT`/`SIGTERM`, acquires the PID lock, and loops over `cycle`.
 2. `cycle` asks the client for one `wallpaperInfo`, downloads it with the shared HTTP client, calls `applyWallpaper` (which wraps `wallpaper.SetFromFile`), then removes older downloaded files.
 3. `wallhaven.go`:
-    - Search: fetch page 1 for metadata; choose a random page in `[1, min(meta.last_page, -pq)]`; pick a random item from that page.
+    - Search: fetch page 1 for metadata; use `-page` when set, otherwise choose a random page in `[1, min(meta.last_page, -pq)]`; pick a random item from that page.
     - IDs: pick a random ID from `-id` and fetch `/w/{id}`.
+    - All search API parameters are exposed as flags and validated by `normalize*` helpers (`q`, `categories`, `purity`, `sorting`, `order`, `topRange`, `atleast`, `resolutions`, `ratios`, `colors`, `page`, `seed`, `apikey`).
 4. `wallpaper.go` owns the HTTP download (2-minute timeout, 100 MiB cap), atomic storage, persistent data directory, and cleanup.
 5. `instance.go` writes `<dataDir>/hyprhaven.pid`; on startup it kills the previous PID if it is still alive.
 
@@ -104,19 +105,25 @@ Makefile targets: `build`, `build-darwin` (host arch), `build-darwin-arm64`, `bu
 
 Defaults and help text live in `parseFlags` (`main.go`) and the README. Keep them in sync.
 
-| Flag      | Default     | Meaning                       |
-| --------- | ----------- | ----------------------------- |
-| `-t`      | `15`        | Minutes between changes       |
-| `-pq`     | `5`         | Maximum random search page    |
-| `-s`      | `favorites` | Sorting                       |
-| `-c`      | `111`       | Categories                    |
-| `-q`      | `""`        | Search query                  |
-| `-p`      | `100`       | Purity                        |
-| `-apikey` | `""`        | Wallhaven API key             |
-| `-sz`     | `1920x1080` | Minimum resolution            |
-| `-r`      | `landscape` | Ratio                         |
-| `-id`     | `""`        | Comma-separated wallpaper IDs |
-| `-once`   | `false`     | Set one wallpaper and exit    |
+| Flag      | Default     | Meaning                                   |
+| --------- | ----------- | ----------------------------------------- |
+| `-t`      | `15`        | Minutes between changes                   |
+| `-pq`     | `5`         | Maximum random search page                |
+| `-page`   | `0`         | Exact search page, `0` = random           |
+| `-s`      | `favorites` | Sorting                                   |
+| `-o`      | `desc`      | Sorting order                             |
+| `-tr`     | `1M`        | Toplist range (with `-s toplist`)         |
+| `-c`      | `111`       | Categories (mask or names)                |
+| `-q`      | `""`        | Search query                              |
+| `-p`      | `100`       | Purity (mask or names)                    |
+| `-apikey` | `""`        | Wallhaven API key                         |
+| `-sz`     | `1920x1080` | Minimum resolution                        |
+| `-res`    | `""`        | Exact resolutions, comma-separated        |
+| `-r`      | `landscape` | Ratio(s)                                  |
+| `-color`  | `""`        | Palette colors, comma-separated hex       |
+| `-seed`   | `""`        | Random seed (requires `-s random`)        |
+| `-id`     | `""`        | Comma-separated wallpaper IDs             |
+| `-once`   | `false`     | Set one wallpaper and exit                |
 
 ## Data and state
 
@@ -133,8 +140,11 @@ Defaults and help text live in `parseFlags` (`main.go`) and the README. Keep the
 
 - Use `meta.last_page` for pagination. Do not compute pages as `total/per_page + 1`.
 - Check `len(data) > 0` before indexing; the last page can be short and empty searches exist.
-- `-pq` is an upper bound on the random page, not the page to fetch.
-- Without `-apikey`, `sanitizePurity` changes a trailing `1` to `0` (NSFW disabled). The API key query parameter is `apikey`, not `wh_api`.
+- `-pq` is an upper bound on the random page, not the page to fetch. `-page` overrides it with an exact page.
+- Without `-apikey`, `sanitizePurity` clears the NSFW bit (last digit) of the purity mask. The API key query parameter is `apikey`, not `wh_api`.
+- `searchParams.values` only sends `topRange` for `-s toplist` and `seed` for `-s random`. Random sorting returns `meta.seed` on page 1, which `pickRandom` reuses on the chosen page so the shuffle is stable.
+- Validate search filters through the `normalize*` helpers before requesting. The API silently ignores bad `purity`/`sorting`/`order` values, returns a 500 for malformed `categories`, and only accepts the documented color palette.
+- The API ignores `resolutions` when `atleast` is also sent, so `searchParams.values` sends one or the other and `-res` takes precedence over `-sz`.
 - Downloads use unique filenames so a failed rename cannot delete the currently displayed wallpaper.
 - Run `cleanupWallpapers` only after `SetFromFile` succeeds.
 - The PID lock uses `os.Process.Kill`; do not replace it with a process-name scan.
